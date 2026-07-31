@@ -1,5 +1,5 @@
 # --------- IMPORTS ---------
-from FUNC_LIB import get_cred, make_log, write_log, get_duration_hours_from_tc
+from FUNC_LIB import link_api, make_log, write_log, get_duration_hours_from_tc
 import FlowAPI
 from pathlib import Path
 import csv
@@ -7,40 +7,32 @@ import traceback
 
 
 # --------- CONFIG ---------
-test_mode = False
+test_mode = True
 
-search_fields = {"Path": "userpath", "Search_Phrase": ("Drohne", "Drone", "DJI", "drohne", "drone", "dji")}
-return_fields = {"clip_ID": "clip_id", "Names": "display_name", "Hashes": "hash", "TC_start": "timecode_start", "TC_end": "timecode_end", "Path": "userpath"}
+
+searches = (
+    {
+        "name": "drone_search", 
+        "search_field": "userpath",
+        "search_method": "contains",
+        "search_values": ("Drohne", "Drone", "DJI", "drohne", "drone", "dji"),
+        "condition_field": "has_video",
+        "condition_method": "is",
+        "condition_value": "true",
+        "return_values": ("clip_id", "display_name", "hash", "timecode_start", "timecode_end", "userpath")
+    }
+)
 
 main_log = make_log("searcher_log.txt")
 result_csv = Path(__file__).parent / "search_result.csv"
 
 
 # --------- INIT ---------
-metadata_api = FlowAPI.Metadata.create_gateway_instance(
-    get_cred("flow_user"),
-    get_cred("flow_password"),
-    get_cred("flow_host")
-    )
-
+metadata_api = link_api("metadata")
 
 write_log(main_log, "Searcher started.")
 
 # --------- FUNC ---------
-def set_limit_and_offset():
-    """
-    Set the limit for the number of clips to retrieve based on test mode.
-    """
-    if test_mode:
-        limit = 1
-        offset = 0
-    else:
-        limit = 1000
-        offset = 0
-
-    return limit, offset
-
-
 def find_all_matches(obj, match_key, results=None):
     """
     Recursively finds all values matching match_key in the given object.
@@ -90,36 +82,38 @@ def write_return_items_to_csv(return_items):
 
 
 # --------- MAIN ---------
+search_info_message = (
+    f"Searching in field '{search_fields['Path']}' for: {', '.join(search_fields['Search_Phrase'])}"
+)
+print("Search started")
+print(search_info_message)
+write_log(main_log, f"{search_info_message}")
+
 try:
     if result_csv.exists():
         result_csv.unlink()
 
-    limit, offset = set_limit_and_offset()
-    all_clips = metadata_api.numClips()
-    processed_batches = 0
+    limit = 1 if test_mode else metadata_api.numClips()
 
-    search_info_message = (
-        f"Searching in field '{search_fields['Path']}' for: {', '.join(search_fields['Search_Phrase'])}"
-    )
-    print("Search started")
-    print(search_info_message)
-    write_log(main_log, f"{search_info_message}")
+    all_clip_ids = metadata_api.clips(offset=0, limit=limit)
 
-    while offset < all_clips:
-        clip_ids = metadata_api.clips(offset=offset, limit=limit)
-        all_clip_metadata = metadata_api.getClipsByIDs(clip_ids)
+    for clip_id in all_clip_ids:
+        clip_all_metadata = metadata_api.getClip(clip_id)
+        
+        for metadata in clip_all_metadata:
+            if metadata == has video // condition
+                for path in find_all_matches(metadata, search_fields["Path"]):
+                    if path and any(phrase in path for phrase in condition_fields["Search_Phrase"]):
+                        write_return_items_to_csv(get_return_items(metadata, return_fields))
+                        break
 
-        for clip in all_clip_metadata:
-            for path in find_all_matches(clip, search_fields["Path"]):
-                if path and any(phrase in path for phrase in search_fields["Search_Phrase"]):
-                    write_return_items_to_csv(get_return_items(clip, return_fields))
-                    break
-
-        processed_batches += 1
-        progress_message = f"Processed batch {processed_batches} of {((all_clips + limit - 1) // limit)} (current={offset}, total_clips={all_clips})"
+        progress_message = f""
         print(progress_message)
         write_log(main_log, progress_message)
         offset += limit
+
+
+
 
 
 

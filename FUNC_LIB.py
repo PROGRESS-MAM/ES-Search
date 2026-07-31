@@ -4,6 +4,7 @@ import datetime
 from dotenv import load_dotenv
 from pathlib import Path
 import json
+import FlowAPI
 
 
 
@@ -28,45 +29,30 @@ def parse_tc_to_ms(tc_value):
 
 
 # --------- FUNC MAIN---------
-def get_cred(cred):
-    """
-    Load credentials from cred.env and return a single credential value.
-    Usage in Caller e.g. "get_cred("flow_host")"
-    """
+def link_api(api):
     env_path = Path(__file__).parent / "cred.env"
     load_dotenv(env_path)
 
-    if cred == "flow_host":
-        return os.environ.get("FLOW_HOST")
-    elif cred == "flow_user":
-        return os.environ.get("FLOW_USER")
-    elif cred == "flow_password":
-        return os.environ.get("FLOW_PASSWORD")
+    if api == "metadata":
+        return FlowAPI.Metadata.create_gateway_instance(
+            os.environ.get("FLOW_USER"), os.environ.get("FLOW_PASSWORD"), os.environ.get("FLOW_HOST")
 
-
+    return None
+    )
 
 def make_log(log_name="log.txt"):
-    """
-    Create a log file in the same directory as this script.
-    """
     log_path = Path(__file__).parent / log_name
     log_path.touch(exist_ok=True)
     return log_path
 
 
 def write_log(log_path, message):
-    """
-    Write a message to a log file.
-    """
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     with open(log_path, "a") as log_file:
         log_file.write(f"{timestamp}: {message}\n")
 
 
 def save_clip_metadata_to_json(clip_metadata):
-    """
-    Save clip metadata to a JSON file.
-    """
     try:
         clip_id = clip_metadata[0]["clip_id"]
     except ():
