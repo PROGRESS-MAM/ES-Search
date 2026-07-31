@@ -69,3 +69,6 @@
 2026-07-31 15:53:03: Searcher started.
 2026-07-31 16:25:01: Searcher started.
 2026-07-31 16:25:15: Searcher started.
+2026-07-31 16:46:51: Searcher started.
+2026-07-31 17:09:17: Searcher started.
+2026-07-31 17:09:17: Searching in field 'userpath' for: Drohne, Drone, DJI

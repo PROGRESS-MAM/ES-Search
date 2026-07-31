@@ -1,5 +1,6 @@
 # --------- IMPORTS ---------
 import os
+import datetime
 from dotenv import load_dotenv
 from pathlib import Path
 import json
@@ -57,8 +58,9 @@ def write_log(log_path, message):
     """
     Write a message to a log file.
     """
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     with open(log_path, "a") as log_file:
-        log_file.write(message + "\n")
+        log_file.write(f"{timestamp}: {message}\n")
 
 
 def save_clip_metadata_to_json(clip_metadata):

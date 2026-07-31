@@ -2,15 +2,15 @@
 from FUNC_LIB import get_cred, make_log, write_log, get_duration_hours_from_tc
 import FlowAPI
 from pathlib import Path
-import datetime
 import csv
+import traceback
 
 
 # --------- CONFIG ---------
-test_mode = True
+test_mode = False
 
-search_fields = {"Path": "userpath", "Search_Phrase": ("Drohne", "Drone", "DJI", "MXF")}
-return_fields = {"clip_ID": "clip_id", "Names": "display_name", "Hashes": "hash", "TC_start": "timecode_start", "TC_end": "timecode_end"}
+search_fields = {"Path": "userpath", "Search_Phrase": ("Drohne", "Drone", "DJI", "drohne", "drone", "dji")}
+return_fields = {"clip_ID": "clip_id", "Names": "display_name", "Hashes": "hash", "TC_start": "timecode_start", "TC_end": "timecode_end", "Path": "userpath"}
 
 main_log = make_log("searcher_log.txt")
 result_csv = Path(__file__).parent / "search_result.csv"
@@ -24,8 +24,7 @@ metadata_api = FlowAPI.Metadata.create_gateway_instance(
     )
 
 
-write_log(main_log, f"{datetime.datetime.now():%Y-%m-%d %H:%M:%S}: Searcher started.")
-
+write_log(main_log, "Searcher started.")
 
 # --------- FUNC ---------
 def set_limit_and_offset():
@@ -91,43 +90,60 @@ def write_return_items_to_csv(return_items):
 
 
 # --------- MAIN ---------
-if result_csv.exists():
-    result_csv.unlink()
+try:
+    if result_csv.exists():
+        result_csv.unlink()
 
-limit, offset = set_limit_and_offset()
-all_clips = metadata_api.numClips()
-processed_batches = 0
+    limit, offset = set_limit_and_offset()
+    all_clips = metadata_api.numClips()
+    processed_batches = 0
 
-while offset < all_clips:
-    clip_ids = metadata_api.clips(offset=offset, limit=limit)
-    all_clip_metadata = metadata_api.getClipsByIDs(clip_ids)
+    search_info_message = (
+        f"Searching in field '{search_fields['Path']}' for: {', '.join(search_fields['Search_Phrase'])}"
+    )
+    print("Search started")
+    print(search_info_message)
+    write_log(main_log, f"{search_info_message}")
 
-    for clip in all_clip_metadata:
-        for path in find_all_matches(clip, search_fields["Path"]):
-            if path and any(phrase in path for phrase in search_fields["Search_Phrase"]):
-                write_return_items_to_csv(get_return_items(clip, return_fields))
-                break
+    while offset < all_clips:
+        clip_ids = metadata_api.clips(offset=offset, limit=limit)
+        all_clip_metadata = metadata_api.getClipsByIDs(clip_ids)
 
-    processed_batches += 1
-    print(f"Processed batch {processed_batches} of {((all_clips + limit - 1) // limit)} (current={offset}, total_clips={all_clips})")
-    offset += limit
+        for clip in all_clip_metadata:
+            for path in find_all_matches(clip, search_fields["Path"]):
+                if path and any(phrase in path for phrase in search_fields["Search_Phrase"]):
+                    write_return_items_to_csv(get_return_items(clip, return_fields))
+                    break
+
+        processed_batches += 1
+        progress_message = f"Processed batch {processed_batches} of {((all_clips + limit - 1) // limit)} (current={offset}, total_clips={all_clips})"
+        print(progress_message)
+        write_log(main_log, progress_message)
+        offset += limit
 
 
 
+    # Case: Get total hours from search
+    sum_hours = 0.0
 
-# Case: Get total hours from search
-sum_hours = 0.0
+    with open(result_csv, newline="", encoding="utf-8") as csv_file:
+        rows = list(csv.DictReader(csv_file))
+    for row in rows:
+        duration_hours = get_duration_hours_from_tc(row.get("TC_start"), row.get("TC_end"))
+        if duration_hours is not None:
+            sum_hours += float(duration_hours)
 
-with open(result_csv, newline="", encoding="utf-8") as csv_file:
-    rows = list(csv.DictReader(csv_file))
-for row in rows:
-    duration_hours = get_duration_hours_from_tc(row.get("TC_start"), row.get("TC_end"))
-    if duration_hours is not None:
-        sum_hours += float(duration_hours)
+    fieldnames = list(return_fields.keys()) + ["total_duration_hours"]
+    with open(result_csv, "a", newline="", encoding="utf-8") as csv_file:
+        writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
+        row = {name: "" for name in return_fields.keys()}
+        row["total_duration_hours"] = f"{sum_hours:.4f}"
+        writer.writerow(row)
 
-fieldnames = list(return_fields.keys()) + ["total_duration_hours"]
-with open(result_csv, "a", newline="", encoding="utf-8") as csv_file:
-    writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
-    row = {name: "" for name in return_fields.keys()}
-    row["total_duration_hours"] = f"{sum_hours:.4f}"
-    writer.writerow(row)
+
+except Exception as exc:
+    error_message = f"Unhandled error: {exc}"
+    print(error_message)
+    write_log(main_log, error_message)
+    write_log(main_log, traceback.format_exc())
+    raise
