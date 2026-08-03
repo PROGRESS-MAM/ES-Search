@@ -152,16 +152,25 @@ try:
     for search in searches:
         search_name = search["name"]
         result_csv = Path(__file__).parent / f"{search_name}__search_result.csv"
+        match_count = 0
+
+        start_message = f"Suche '{search_name}' gestartet"
+        print(start_message)
+        write_log(main_log, start_message)
 
         if result_csv.exists():
             result_csv.unlink()
 
-        for clip_id in all_clip_ids:
-            clip_all_metadata = metadata_api.getClip(clip_id)
+        for clip_index, clip_id in enumerate(all_clip_ids, start=1):
+            progress_message = f"Clip {clip_index} von {len(all_clip_ids)} verarbeitet"
+            print(progress_message)
+            write_log(main_log, progress_message)
 
+            clip_all_metadata = metadata_api.getClip(clip_id)
             match = eval_requests(clip_all_metadata, search["requests"])
 
             if match:
+                match_count += 1
                 write_header = not result_csv.exists()
 
                 with open(result_csv, "a", newline='', encoding='utf-8') as csvfile:
@@ -177,6 +186,10 @@ try:
                         else:
                             row.append("; ".join(str(value) for value in return_values))
                     writer.writerow(row)
+
+        end_message = f"Suche '{search_name}' beendet, {match_count} Treffer gefunden."
+        print(end_message)
+        write_log(main_log, end_message)
 
 
 except Exception as exc:
