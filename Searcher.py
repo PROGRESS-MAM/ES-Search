@@ -24,7 +24,7 @@ searches = [
 # --------- CONFIG ---------
 app_name = "Searcher"
 app_version = "0.1"
-test_mode = True
+test_mode = False
 main_log = "searcher_log.txt"
 
 
@@ -164,7 +164,6 @@ try:
         for clip_index, clip_id in enumerate(all_clip_ids, start=1):
             progress_message = f"Clip {clip_index} von {len(all_clip_ids)} verarbeitet"
             print(progress_message)
-            write_log(main_log, progress_message)
 
             clip_all_metadata = metadata_api.getClip(clip_id)
             match = eval_requests(clip_all_metadata, search["requests"])
