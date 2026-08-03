@@ -35,7 +35,7 @@ write_log(main_log, f"{app_name} {app_version} started.")
 
 
 # --------- FUNC ---------
-def find_all_field_values(data: Any, field: str) -> List[Any]:
+def find_all_field_values(metadata: Any, field: str) -> List[Any]:
     seen = set()
     results = []
 
@@ -65,19 +65,17 @@ def find_all_field_values(data: Any, field: str) -> List[Any]:
             for item in obj:
                 _recurse(item)
 
-    _recurse(data)
+    _recurse(metadata)
     return results
 
 
-def eval_single_request(clip_metadata: dict, request_tuple: tuple) -> bool:
+def eval_single_request(metadata: dict, request_tuple: tuple) -> bool:
     field, operator, value = request_tuple
-    vals = find_all_field_values(clip_metadata, field)
+    vals = find_all_field_values(metadata, field)
 
-    # no values found -> fail
     if not vals:
         return False
 
-    # string comparisons
     if operator == "is":
         value_text = str(value).casefold()
         return any(str(val).casefold() == value_text for val in vals)
@@ -116,13 +114,13 @@ def eval_single_request(clip_metadata: dict, request_tuple: tuple) -> bool:
     return False
 
 
-def eval_requests(data: dict, requests: tuple) -> bool:
+def eval_requests(metadata: dict, requests: tuple) -> bool:
     request = []
     request_operators = []
 
     for item in requests:
         if isinstance(item, tuple):
-            request.append(eval_single_request(data, item))
+            request.append(eval_single_request(metadata, item))
         elif isinstance(item, str):
             request_operators.append(item)
 
@@ -130,14 +128,14 @@ def eval_requests(data: dict, requests: tuple) -> bool:
         return False
 
     acc = request[0]
-    for idx, operator in enumerate(request_operators):
-        next_val = request[idx + 1] if idx + 1 < len(request) else False
+    for i, operator in enumerate(request_operators):
+        next_val = request[i + 1] if i + 1 < len(request) else False
 
         if operator == "and":
             acc = acc and next_val
         elif operator == "or":
             acc = acc or next_val
-            
+
     return acc
 
 
