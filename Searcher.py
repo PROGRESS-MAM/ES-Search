@@ -10,13 +10,13 @@ import csv
 # --------- SEARCH ---------
 searches = [
     {
-        "name": "drone",
+        "name": "Drone",
         "requests": (
-            ("has_video", "is", "false"),
+            ("has_video", "is", "true"),
             "and",
-            ("userpath", "contains", ("Drone", "mxf", "wav")),
+            ("userpath", "contains", ("Drone", "Drohne", "DJI")),
         ),
-        "return": ("clip_id", "display_name", "hash", "timecode_start", "timecode_end", "userpath"),
+        "returns": ("clip_id", "media_space_name", "display_name", "hash", "timecode_start", "timecode_end", "userpath"),
     }
 ]
 
@@ -49,7 +49,7 @@ def find_all_field_values(metadata: Any, field: str) -> List[Any]:
         except Exception:
             return str(v)
 
-    def _recurse(obj: Any):
+    def recurse(obj: Any):
         if isinstance(obj, dict):
             for k, v in obj.items():
                 try:
@@ -60,81 +60,85 @@ def find_all_field_values(metadata: Any, field: str) -> List[Any]:
                             results.append(v)
                 except Exception:
                     pass
-                _recurse(v)
+                recurse(v)
         elif isinstance(obj, (list, tuple, set)):
             for item in obj:
-                _recurse(item)
+                recurse(item)
 
-    _recurse(metadata)
+    recurse(metadata)
     return results
 
 
-def eval_single_request(metadata: dict, request_tuple: tuple) -> bool:
-    field, operator, value = request_tuple
-    vals = find_all_field_values(metadata, field)
+def eval_request_item(metadata: dict, request_item: tuple) -> bool:
+    request_field, request_operator, request_value = request_item
+    actual_values = find_all_field_values(metadata, request_field)
 
-    if not vals:
+    if not actual_values:
+        return False
+    
+    if request_operator == "is":
+        for value in actual_values:
+            if str(value).casefold() == str(request_value).casefold():
+                return True
         return False
 
-    if operator == "is":
-        value_text = str(value).casefold()
-        return any(str(val).casefold() == value_text for val in vals)
+    if request_operator == "contains":
+        if isinstance(request_value, (list, tuple)):
+            request_values = request_value
+        else:
+            request_values = (request_value,)
 
-    if operator == "contains":
-        candidates = value if isinstance(value, (list, tuple)) else (value,)
-        return any(
-            str(cand).casefold() in str(actual).casefold()
-            for actual in vals
-            for cand in candidates
-        )
+        for act_value in actual_values:
+            for req_value in request_values:
+                if str(req_value).casefold() in str(act_value).casefold():
+                    return True
+        return False
 
+    if request_operator in (">", "<", ">=", "<="):
+        value_num = float(request_value)
 
-    # numeric comparisons
-    if operator in (">", "<", ">=", "<="):
-        try:
-            value_num = float(value)
-            for actual in vals:
-                try:
-                    actual_num = float(actual)
-                except Exception:
-                    continue
-                if operator == ">" and actual_num > value_num:
-                    return True
-                if operator == "<" and actual_num < value_num:
-                    return True
-                if operator == ">=" and actual_num >= value_num:
-                    return True
-                if operator == "<=" and actual_num <= value_num:
-                    return True
-            return False
-        except Exception:
-            return False
+        for value in actual_values:
+            try:
+                actual_num = float(value)
+            except Exception:
+                continue
 
-    # unknown operator — fail safe
-    return False
+            if request_operator == ">" and actual_num > value_num:
+                return True
+            if request_operator == "<" and actual_num < value_num:
+                return True
+            if request_operator == ">=" and actual_num >= value_num:
+                return True
+            if request_operator == "<=" and actual_num <= value_num:
+                return True
+
+        return False
 
 
 def eval_requests(metadata: dict, requests: tuple) -> bool:
-    request = []
-    request_operators = []
+    result = []
 
     for item in requests:
         if isinstance(item, tuple):
-            request.append(eval_single_request(metadata, item))
+            result.append(eval_request_item(metadata, item))
         elif isinstance(item, str):
-            request_operators.append(item)
+            result.append(item)
 
-    if not request:
+    if not result:
         return False
 
-    acc = request[0]
-    for i, operator in enumerate(request_operators):
-        next_val = request[i + 1] if i + 1 < len(request) else False
+    acc = result[0]
+    index = 1
+    while index < len(result):
+        operator = result[index]
+        next_result = result[index + 1] if index + 1 < len(result) else False
 
         if operator == "and":
-            acc = acc and next_val
+            acc = acc and next_result
         elif operator == "or":
-            acc = acc or next_val
+            acc = acc or next_result
+
+        index += 2
 
     return acc
 
@@ -146,38 +150,32 @@ try:
     all_clip_ids = metadata_api.clips(offset=0, limit=limit)
 
     for search in searches:
+        search_name = search["name"]
+        result_csv = Path(__file__).parent / f"{search_name}__search_result.csv"
+
+        if result_csv.exists():
+            result_csv.unlink()
+
         for clip_id in all_clip_ids:
             clip_all_metadata = metadata_api.getClip(clip_id)
-            matched = eval_requests(clip_all_metadata, search["requests"])
 
-            if matched:
-                search_name = search["name"]
-                result_csv = Path(__file__).parent / f"{search_name}__search_result.csv"
+            match = eval_requests(clip_all_metadata, search["requests"])
 
-                if result_csv.exists():
-                    result_csv.unlink()
-
+            if match:
                 write_header = not result_csv.exists()
+
                 with open(result_csv, "a", newline='', encoding='utf-8') as csvfile:
                     writer = csv.writer(csvfile)
                     if write_header:
-                        writer.writerow(list(search.get("return", [])))
+                        writer.writerow(list(search.get("returns", [])))
 
                     row = []
-                    for field in search.get("return", []):
-                        vals = find_all_field_values(clip_all_metadata, field)
-                        if not vals:
-                                # no values found -> empty cell
+                    for field in search.get("returns", []):
+                        return_values = find_all_field_values(clip_all_metadata, field)
+                        if not return_values:
                                 row.append("")
                         else:
-                            # stringify and deduplicate-preserving-order already done by find_all_field_values
-                            flat = []
-                            for v in vals:
-                                if isinstance(v, (list, dict)):
-                                    flat.append(json.dumps(v, ensure_ascii=False))
-                                else:
-                                    flat.append(str(v))
-                            row.append("; ".join(flat))
+                            row.append("; ".join(str(value) for value in return_values))
                     writer.writerow(row)
 
 
