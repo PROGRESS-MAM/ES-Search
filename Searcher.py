@@ -10,11 +10,11 @@ import csv
 # --------- SEARCH ---------
 searches = [
     {
-        "name": "drone_search",
+        "name": "drone",
         "requests": (
-            ("has_video", "is", "true"),
+            ("has_video", "is", "false"),
             "and",
-            ("userpath", "contains", ("Drohne", "Drone", "DJI")),
+            ("userpath", "contains", ("Drone", "mxf", "wav")),
         ),
         "return": ("clip_id", "display_name", "hash", "timecode_start", "timecode_end", "userpath"),
     }
@@ -116,67 +116,49 @@ def eval_single_request(clip_metadata: dict, request_tuple: tuple) -> bool:
     return False
 
 
-def eval_requests_sequence(clip_metadata: dict, requests_sequence: tuple) -> bool:
-    # supports alternating request tuples and operator strings ('and'/'or')
-    results = []
-    operators = []
+def eval_requests(data: dict, requests: tuple) -> bool:
+    request = []
+    request_operators = []
 
-    for req in requests_sequence:
-        if isinstance(req, tuple):
-            results.append(eval_single_request(clip_metadata, req))
-        elif isinstance(req, str):
-            operators.append(req.lower())
-        else:
-            # unsupported element
-            operators.append(str(req).lower())
+    for item in requests:
+        if isinstance(item, tuple):
+            request.append(eval_single_request(data, item))
+        elif isinstance(item, str):
+            request_operators.append(item)
 
-    if not results:
+    if not request:
         return False
 
-    # fold results with operators left-to-right
-    acc = results[0]
-    for idx, op in enumerate(operators):
-        next_val = results[idx + 1] if idx + 1 < len(results) else False
-        if op == "and":
-            acc = acc and next_val
-        elif op == "or":
-            acc = acc or next_val
-        else:
-            # unknown operator: default to and
-            acc = acc and next_val
+    acc = request[0]
+    for idx, operator in enumerate(request_operators):
+        next_val = request[idx + 1] if idx + 1 < len(request) else False
 
+        if operator == "and":
+            acc = acc and next_val
+        elif operator == "or":
+            acc = acc or next_val
+            
     return acc
 
 
 
 # --------- MAIN ---------
 try:
-    limit = 1 if test_mode else metadata_api.numClips()
+    limit = 10 if test_mode else metadata_api.numClips()
     all_clip_ids = metadata_api.clips(offset=0, limit=limit)
 
-    write_log(main_log, f"searches type: {type(searches)}")
-    write_log(main_log, f"searches repr: {repr(searches)}")
-
     for search in searches:
-        search_name = search["name"]
-        result_csv = Path(__file__).parent / f"{search_name}_result.csv"
-
-        # remove previous results once per search
-        if result_csv.exists():
-            result_csv.unlink()
-
-        # iterate clips and evaluate requests
         for clip_id in all_clip_ids:
             clip_all_metadata = metadata_api.getClip(clip_id)
-
-            try:
-                matched = eval_requests_sequence(clip_all_metadata, search["requests"])
-            except Exception as e:
-                write_log(main_log, f"Error evaluating requests for clip {clip_id}: {e}")
-                matched = False
+            matched = eval_requests(clip_all_metadata, search["requests"])
 
             if matched:
-                # prepare CSV header if needed
+                search_name = search["name"]
+                result_csv = Path(__file__).parent / f"{search_name}__search_result.csv"
+
+                if result_csv.exists():
+                    result_csv.unlink()
+
                 write_header = not result_csv.exists()
                 with open(result_csv, "a", newline='', encoding='utf-8') as csvfile:
                     writer = csv.writer(csvfile)
@@ -200,7 +182,6 @@ try:
                             row.append("; ".join(flat))
                     writer.writerow(row)
 
-                write_log(main_log, f"Match for search '{search_name}' in clip {clip_id}")
 
 except Exception as exc:
     error_message = f"Unhandled error: {exc}"
