@@ -1,41 +1,37 @@
-# --------- IMPORTS ---------
-from FUNC_LIB import link_api, make_log, write_log, get_duration_hours_from_tc
-import FlowAPI
+﻿# --------- IMPORTS ---------
+from FUNC_LIB import link_api, write_log, get_duration_hours_from_tc
 from pathlib import Path
 import csv
 import traceback
 
 
 # --------- CONFIG ---------
-test_mode = True
-
-
 searches = (
     {
         "name": "drone_search", 
-        "search_field": "userpath",
-        "search_method": "contains",
-        "search_values": ("Drohne", "Drone", "DJI", "drohne", "drone", "dji"),
-        "condition_field": "has_video",
-        "condition_method": "is",
-        "condition_value": "true",
-        "return_values": ("clip_id", "display_name", "hash", "timecode_start", "timecode_end", "userpath")
+        "requests": (
+                    ("has_video", "is", "true"),
+                    ("and"),
+                    ("userpath", "contains", ("Drohne", "Drone", "DJI", "drohne", "drone", "dji"))
+                    ),
+        "returns": ("clip_id", "display_name", "hash", "timecode_start", "timecode_end", "userpath")
     }
 )
 
-main_log = make_log("searcher_log.txt")
-result_csv = Path(__file__).parent / "search_result.csv"
+test_mode = True
+main_log = "searcher_log.txt"
+result_csv = Path(__file__).parent / f"{searches['name']}_result.csv"
 
 
 # --------- INIT ---------
 metadata_api = link_api("metadata")
-
 write_log(main_log, "Searcher started.")
 
+
 # --------- FUNC ---------
-def find_all_matches(obj, match_key, results=None):
+def get_metadata_value(field, method, clip):
     """
-    Recursively finds all values matching match_key in the given object.
+    Recursively finds all values matching field with given method in clip.
     """
     if results is None:
         results = []
@@ -81,14 +77,22 @@ def write_return_items_to_csv(return_items):
         writer.writerow(row)
 
 
-# --------- MAIN ---------
-search_info_message = (
-    f"Searching in field '{search_fields['Path']}' for: {', '.join(search_fields['Search_Phrase'])}"
-)
-print("Search started")
-print(search_info_message)
-write_log(main_log, f"{search_info_message}")
+def eval_method(left, method, right):
+    if method == "is":
+        return left == right
 
+    elif method == "contains":
+        return any(val in left for val in right)
+
+    elif method == "and":
+        return left and right
+
+    else:
+        raise ValueError(f"Unknown evaluation method: {method}")
+
+
+
+# --------- MAIN ---------
 try:
     if result_csv.exists():
         result_csv.unlink()
@@ -99,18 +103,36 @@ try:
 
     for clip_id in all_clip_ids:
         clip_all_metadata = metadata_api.getClip(clip_id)
-        
-        for metadata in clip_all_metadata:
+
+        for search in searches:
+            for request in search["requests"]:
+                
+
+       
+
+            meta = clip_all_metadata.get(s_field)
+
+            if eval_method(meta, c_method, c_value):
+
+
+
+
+
+                if clip_all_metadata[field] 
+
+
+
+
+
+
             if metadata == has video // condition
                 for path in find_all_matches(metadata, search_fields["Path"]):
                     if path and any(phrase in path for phrase in condition_fields["Search_Phrase"]):
                         write_return_items_to_csv(get_return_items(metadata, return_fields))
                         break
 
-        progress_message = f""
-        print(progress_message)
-        write_log(main_log, progress_message)
-        offset += limit
+
+  
 
 
 
