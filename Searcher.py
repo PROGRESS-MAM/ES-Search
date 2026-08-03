@@ -2,8 +2,9 @@
 from FUNC_LIB import link_api, write_log, get_duration_hours_from_tc
 from pathlib import Path
 import traceback
+import json
+from typing import Any, List
 import csv
-from typing import Any
 
 
 # --------- SEARCH ---------
@@ -13,9 +14,9 @@ searches = [
         "requests": (
             ("has_video", "is", "true"),
             "and",
-            ("userpath", "contains", ("Drohne", "Drone", "DJI", "drohne", "drone", "dji")),
+            ("userpath", "contains", ("Drohne", "Drone", "DJI")),
         ),
-        "returns": ("clip_id", "display_name", "hash", "timecode_start", "timecode_end", "userpath"),
+        "return": ("clip_id", "display_name", "hash", "timecode_start", "timecode_end", "userpath"),
     }
 ]
 
@@ -34,70 +35,80 @@ write_log(main_log, f"{app_name} {app_version} started.")
 
 
 # --------- FUNC ---------
-def get_request(request):
-    if isinstance(request, tuple):
-        look_for_field, with_operator, for_value = request
-        return look_for_field, with_operator, for_value
-    else:
-        requests_operator = request
-        return requests_operator
+def find_all_field_values(data: Any, field: str) -> List[Any]:
+    seen = set()
+    results = []
 
+    def norm(v: Any) -> str:
+        try:
+            if isinstance(v, (dict, list, tuple)):
+                return json.dumps(v, sort_keys=True, ensure_ascii=False)
+            if isinstance(v, str):
+                return v.casefold()
+            return str(v)
+        except Exception:
+            return str(v)
 
-def _get_field_value(clip_metadata: dict, field: str) -> Any:
-    # try direct lookup
-    if field in clip_metadata:
-        return clip_metadata[field]
+    def _recurse(obj: Any):
+        if isinstance(obj, dict):
+            for k, v in obj.items():
+                try:
+                    if isinstance(k, str) and k.casefold() == field.casefold():
+                        key = norm(v)
+                        if key not in seen:
+                            seen.add(key)
+                            results.append(v)
+                except Exception:
+                    pass
+                _recurse(v)
+        elif isinstance(obj, (list, tuple, set)):
+            for item in obj:
+                _recurse(item)
 
-    # common nested location
-    if isinstance(clip_metadata.get("metadata"), dict) and field in clip_metadata.get("metadata"):
-        return clip_metadata.get("metadata").get(field)
-
-    # case-insensitive search at top level
-    for k, v in clip_metadata.items():
-        if isinstance(k, str) and k.lower() == field.lower():
-            return v
-
-    # not found
-    return None
+    _recurse(data)
+    return results
 
 
 def eval_single_request(clip_metadata: dict, request_tuple: tuple) -> bool:
     field, operator, value = request_tuple
-    actual = _get_field_value(clip_metadata, field)
+    vals = find_all_field_values(clip_metadata, field)
 
-    # normalize
-    if actual is None:
+    # no values found -> fail
+    if not vals:
         return False
 
     # string comparisons
     if operator == "is":
-        try:
-            return str(actual).lower() == str(value).lower()
-        except Exception:
-            return actual == value
+        value_text = str(value).casefold()
+        return any(str(val).casefold() == value_text for val in vals)
 
     if operator == "contains":
-        # support value being tuple/list or single
         candidates = value if isinstance(value, (list, tuple)) else (value,)
-        actual_str = str(actual).lower()
-        for cand in candidates:
-            if str(cand).lower() in actual_str:
-                return True
-        return False
+        return any(
+            str(cand).casefold() in str(actual).casefold()
+            for actual in vals
+            for cand in candidates
+        )
+
 
     # numeric comparisons
     if operator in (">", "<", ">=", "<="):
         try:
-            actual_num = float(actual)
             value_num = float(value)
-            if operator == ">":
-                return actual_num > value_num
-            if operator == "<":
-                return actual_num < value_num
-            if operator == ">=":
-                return actual_num >= value_num
-            if operator == "<=":
-                return actual_num <= value_num
+            for actual in vals:
+                try:
+                    actual_num = float(actual)
+                except Exception:
+                    continue
+                if operator == ">" and actual_num > value_num:
+                    return True
+                if operator == "<" and actual_num < value_num:
+                    return True
+                if operator == ">=" and actual_num >= value_num:
+                    return True
+                if operator == "<=" and actual_num <= value_num:
+                    return True
+            return False
         except Exception:
             return False
 
@@ -145,6 +156,7 @@ try:
 
     write_log(main_log, f"searches type: {type(searches)}")
     write_log(main_log, f"searches repr: {repr(searches)}")
+
     for search in searches:
         search_name = search["name"]
         result_csv = Path(__file__).parent / f"{search_name}_result.csv"
@@ -169,23 +181,26 @@ try:
                 with open(result_csv, "a", newline='', encoding='utf-8') as csvfile:
                     writer = csv.writer(csvfile)
                     if write_header:
-                        writer.writerow(list(search.get("returns", [])))
+                        writer.writerow(list(search.get("return", [])))
 
                     row = []
-                    for field in search.get("returns", []):
-                        val = _get_field_value(clip_all_metadata, field)
-                        # flatten lists/dicts to string
-                        if isinstance(val, (list, dict)):
-                            row.append(str(val))
+                    for field in search.get("return", []):
+                        vals = find_all_field_values(clip_all_metadata, field)
+                        if not vals:
+                                # no values found -> empty cell
+                                row.append("")
                         else:
-                            row.append(val)
+                            # stringify and deduplicate-preserving-order already done by find_all_field_values
+                            flat = []
+                            for v in vals:
+                                if isinstance(v, (list, dict)):
+                                    flat.append(json.dumps(v, ensure_ascii=False))
+                                else:
+                                    flat.append(str(v))
+                            row.append("; ".join(flat))
                     writer.writerow(row)
+
                 write_log(main_log, f"Match for search '{search_name}' in clip {clip_id}")
-
-
-
-
-
 
 except Exception as exc:
     error_message = f"Unhandled error: {exc}"
