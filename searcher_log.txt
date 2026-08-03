@@ -1866,3 +1866,42 @@
 2026-08-01 00:55:13: Processed batch 1790 of 1790 (current=1789000, total_clips=1789249)
 2026-08-03 14:16:56: Searcher started.
 2026-08-03 14:16:56: Processed clip
+2026-08-03 14:58:08: Searcher 0.1 started.
+2026-08-03 14:58:08: Unhandled error: string indices must be integers, not 'str'
+2026-08-03 14:58:08: Traceback (most recent call last):
+  File "c:\Users\Martin\OneDrive - LOOKS Film & TV Produktionen GmbH\Desktop\Code\ES-Search\Searcher.py", line 147, in <module>
+    search_name = search["name"]
+                  ~~~~~~^^^^^^^^
+TypeError: string indices must be integers, not 'str'
+
+2026-08-03 14:58:24: Searcher 0.1 started.
+2026-08-03 14:58:25: Unhandled error: string indices must be integers, not 'str'
+2026-08-03 14:58:25: Traceback (most recent call last):
+  File "c:\Users\Martin\OneDrive - LOOKS Film & TV Produktionen GmbH\Desktop\Code\ES-Search\Searcher.py", line 147, in <module>
+    search_name = search["name"]
+                  ~~~~~~^^^^^^^^
+TypeError: string indices must be integers, not 'str'
+
+2026-08-03 14:59:00: Searcher 0.1 started.
+2026-08-03 14:59:00: searches type: <class 'dict'>
+2026-08-03 14:59:00: searches repr: {'name': 'drone_search', 'requests': (('has_video', 'is', 'true'), 'and', ('userpath', 'contains', ('Drohne', 'Drone', 'DJI', 'drohne', 'drone', 'dji'))), 'returns': ('clip_id', 'display_name', 'hash', 'timecode_start', 'timecode_end', 'userpath')}
+2026-08-03 14:59:00: Unhandled error: string indices must be integers, not 'str'
+2026-08-03 14:59:00: Traceback (most recent call last):
+  File "c:\Users\Martin\OneDrive - LOOKS Film & TV Produktionen GmbH\Desktop\Code\ES-Search\Searcher.py", line 149, in <module>
+    search_name = search["name"]
+                  ~~~~~~^^^^^^^^
+TypeError: string indices must be integers, not 'str'
+
+2026-08-03 14:59:31: Searcher 0.1 started.
+2026-08-03 14:59:32: searches type: <class 'dict'>
+2026-08-03 14:59:32: searches repr: {'name': 'drone_search', 'requests': (('has_video', 'is', 'true'), 'and', ('userpath', 'contains', ('Drohne', 'Drone', 'DJI', 'drohne', 'drone', 'dji'))), 'returns': ('clip_id', 'display_name', 'hash', 'timecode_start', 'timecode_end', 'userpath')}
+2026-08-03 14:59:32: Unhandled error: string indices must be integers, not 'str'
+2026-08-03 14:59:32: Traceback (most recent call last):
+  File "c:\Users\Martin\OneDrive - LOOKS Film & TV Produktionen GmbH\Desktop\Code\ES-Search\Searcher.py", line 151, in <module>
+    search_name = search["name"]
+                  ~~~~~~^^^^^^^^
+TypeError: string indices must be integers, not 'str'
+
+2026-08-03 14:59:47: Searcher 0.1 started.
+2026-08-03 14:59:47: searches type: <class 'list'>
+2026-08-03 14:59:47: searches repr: [{'name': 'drone_search', 'requests': (('has_video', 'is', 'true'), 'and', ('userpath', 'contains', ('Drohne', 'Drone', 'DJI', 'drohne', 'drone', 'dji'))), 'returns': ('clip_id', 'display_name', 'hash', 'timecode_start', 'timecode_end', 'userpath')}]
