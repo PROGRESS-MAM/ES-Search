@@ -24,7 +24,7 @@ searches = [
 # --------- CONFIG ---------
 app_name = "Searcher"
 app_version = "0.2"
-main_log = "searcher_log.txt"
+main_log = "searcher.log"
 test_mode = False
 test_mode_limit = 10
 datasource = "api"

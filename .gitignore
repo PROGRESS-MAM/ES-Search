@@ -2,3 +2,4 @@ cred.env
 .venv
 /Res
 .csv
+.log
