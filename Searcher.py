@@ -162,7 +162,7 @@ try:
             result_csv.unlink()
 
         for clip_index, clip_id in enumerate(all_clip_ids, start=1):
-            progress_message = f"Clip {clip_index} von {len(all_clip_ids)} verarbeitet"
+            progress_message = f"Clip {clip_index} von {len(all_clip_ids)} durchsucht"
             print(progress_message)
 
             clip_all_metadata = metadata_api.getClip(clip_id)
