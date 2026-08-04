@@ -1,5 +1,5 @@
 __pycache__/
-/TOOLBOX/__pycache__/
+/TOOLBOX
 .venv
 cred.env
 *.log
