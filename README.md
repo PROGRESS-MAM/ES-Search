@@ -1,2 +1,3 @@
 # ES-Search
-Tool for searches in Flow DB
+
+Tool for searches in Flow DB.
