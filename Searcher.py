@@ -1,5 +1,5 @@
 # --------- IMPORTS ---------
-from TOOLBOX import link_api, write_log, get_duration_hours_from_tc
+from TOOLBOX.TOOLBOX import link_api, write_log
 from pathlib import Path
 import traceback
 import json

@@ -1,5 +1,6 @@
 __pycache__/
-cred.env
+/TOOLBOX/__pycache__/
 .venv
-/Res
+cred.env
 *.log
+/searches
