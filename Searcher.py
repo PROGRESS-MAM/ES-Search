@@ -1,5 +1,5 @@
 # --------- IMPORTS ---------
-from FUNC_LIB import link_api, write_log, get_duration_hours_from_tc
+from TOOLBOX import link_api, write_log, get_duration_hours_from_tc
 from pathlib import Path
 import traceback
 import json
@@ -23,14 +23,14 @@ searches = [
 
 # --------- CONFIG ---------
 app_name = "Searcher"
-app_version = "0.1"
-test_mode = True
+app_version = "0.2"
 main_log = "searcher_log.txt"
-
+test_mode = False
+test_mode_limit = 10
+datasource = "api"
 
 
 # --------- INIT ---------
-metadata_api = link_api("metadata")
 write_log(main_log, f"{app_name} {app_version} started.")
 
 
@@ -143,15 +143,31 @@ def eval_requests(metadata: dict, requests: tuple) -> bool:
     return acc
 
 
+def make_result_file(search_name):
+    search_subfolder = "searches"
+    search_folder = Path(__file__).parent / search_subfolder
+    search_folder.mkdir(parents=True, exist_ok=True)
+    result_file = search_folder / f"{search_name}__search_result.csv"
+
+    return result_file
+
 
 # --------- MAIN ---------
-try:
-    limit = 2 if test_mode else metadata_api.numClips()
-    all_clip_ids = metadata_api.clips(offset=0, limit=limit)
+def main(source: str = None):
+    if source == "api":
+        metadata_source = link_api("metadata")
+        limit = test_mode_limit if test_mode else metadata_source.numClips()
+        clip_ids = metadata_source.clips(offset=0, limit=limit)
+
+    elif source == "csv":
+        # metadata_source = link csv file
+        # limit = test_mode_limit if test_mode else all entries
+        # clip_ids = get all metadata entries from csv
+        pass
 
     for search in searches:
         search_name = search["name"]
-        result_csv = Path(__file__).parent / f"{search_name}__search_result.csv"
+        result_csv = make_result_file(search_name)
         match_count = 0
 
         start_message = f"Suche '{search_name}' gestartet"
@@ -161,11 +177,16 @@ try:
         if result_csv.exists():
             result_csv.unlink()
 
-        for clip_index, clip_id in enumerate(all_clip_ids, start=1):
-            progress_message = f"Clip {clip_index} von {len(all_clip_ids)} durchsucht"
+        for clip_index, clip_id in enumerate(clip_ids, start=1):
+            progress_message = f"Clip {clip_index} von {len(clip_ids)} durchsucht"
             print(progress_message)
 
-            clip_all_metadata = metadata_api.getClip(clip_id)
+            if source == "api":
+                clip_all_metadata = metadata_source.getClip(clip_id)
+            elif source == "csv":
+                # clip_all_metadata = read clip metadata from csv
+                pass
+
             match = eval_requests(clip_all_metadata, search["requests"])
 
             if match:
@@ -181,7 +202,7 @@ try:
                     for field in search.get("returns", []):
                         return_values = find_all_field_values(clip_all_metadata, field)
                         if not return_values:
-                                row.append("")
+                            row.append("")
                         else:
                             row.append("; ".join(str(value) for value in return_values))
                     writer.writerow(row)
@@ -191,9 +212,15 @@ try:
         write_log(main_log, end_message)
 
 
-except Exception as exc:
-    error_message = f"Unhandled error: {exc}"
-    print(error_message)
-    write_log(main_log, error_message)
-    write_log(main_log, traceback.format_exc())
-    raise
+# --------- EXEC ---------
+if __name__ == "__main__":
+    try:
+        main(datasource)
+
+    except Exception as exc:
+        error_message = f"Unhandled error in main: {exc}"
+        print(error_message)
+        write_log(main_log, error_message)
+        write_log(main_log, traceback.format_exc())
+
+
