@@ -24,7 +24,7 @@ searches = [
 # --------- CONFIG ---------
 app_name = "Searcher"
 app_version = "0.1"
-test_mode = False
+test_mode = True
 main_log = "searcher_log.txt"
 
 
@@ -146,7 +146,7 @@ def eval_requests(metadata: dict, requests: tuple) -> bool:
 
 # --------- MAIN ---------
 try:
-    limit = 10 if test_mode else metadata_api.numClips()
+    limit = 2 if test_mode else metadata_api.numClips()
     all_clip_ids = metadata_api.clips(offset=0, limit=limit)
 
     for search in searches:

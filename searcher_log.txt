@@ -1,0 +1,3 @@
+2026-08-04 10:49:24: Searcher 0.1 started.
+2026-08-04 10:49:24: Suche 'Drone' gestartet
+2026-08-04 10:49:24: Suche 'Drone' beendet, 0 Treffer gefunden.
