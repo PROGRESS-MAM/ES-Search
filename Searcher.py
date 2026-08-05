@@ -1,24 +1,9 @@
 # --------- IMPORTS ---------
-from TOOLBOX.TOOLBOX import link_api, write_log
-from pathlib import Path
+from TOOLBOX.TOOLBOX import tb_link_api, tb_write_log, tb_make_path
 import traceback
 import json
-from typing import Any, List
+from typing import Any, Dict, Iterator, List
 import csv
-
-
-# --------- SEARCH ---------
-searches = [
-    {
-        "name": "Drone",
-        "requests": (
-            ("has_video", "is", "true"),
-            "and",
-            ("userpath", "contains", ("Drone", "Drohne", "DJI")),
-        ),
-        "returns": ("clip_id", "media_space_name", "display_name", "hash", "timecode_start", "timecode_end", "userpath"),
-    }
-]
 
 
 # --------- CONFIG ---------
@@ -30,11 +15,8 @@ test_mode_limit = 10
 datasource = "api"
 
 
-# --------- INIT ---------
-write_log(main_log, f"{app_name} {app_version} started.")
-
-
 # --------- FUNC ---------
+
 def find_all_field_values(metadata: Any, field: str) -> List[Any]:
     seen = set()
     results = []
@@ -143,20 +125,11 @@ def eval_requests(metadata: dict, requests: tuple) -> bool:
     return acc
 
 
-def make_result_file(search_name):
-    search_subfolder = "searches"
-    search_folder = Path(__file__).parent / search_subfolder
-    search_folder.mkdir(parents=True, exist_ok=True)
-    result_file = search_folder / f"{search_name}__search_result.csv"
-
-    return result_file
-
-
 # --------- MAIN ---------
-def searcher(source: str = None):
+def searcher(source: str = None, search: dict = None) -> Iterator[Dict[str, object]]:
     try:
         if source == "api":
-            metadata_source = link_api("metadata")
+            metadata_source = tb_link_api("metadata")
             limit = test_mode_limit if test_mode else metadata_source.numClips()
             clip_ids = metadata_source.clips(offset=0, limit=limit)
 
@@ -166,61 +139,100 @@ def searcher(source: str = None):
             # clip_ids = get all metadata entries from csv
             pass
 
-        for search in searches:
-            search_name = search["name"]
-            result_csv = make_result_file(search_name)
-            match_count = 0
+        match_count = 0
+        yield {
+            "type": "start",
+            "message": f"Suche '{search.get("name", "")}' gestartet",
+        }
 
-            start_message = f"Suche '{search_name}' gestartet"
-            print(start_message)
-            write_log(main_log, start_message)
+        for clip_index, clip_id in enumerate(clip_ids, start=1):
+            yield {
+                "type": "progress",
+                "message": f"Clip {clip_index} von {len(clip_ids)} wird durchsucht",
+            }
 
-            if result_csv.exists():
-                result_csv.unlink()
+            if source == "api":
+                clip_all_metadata = metadata_source.getClip(clip_id)
+            elif source == "csv":
+                # clip_all_metadata = read clip metadata from csv
+                pass
 
-            for clip_index, clip_id in enumerate(clip_ids, start=1):
-                progress_message = f"Clip {clip_index} von {len(clip_ids)} durchsucht"
-                print(progress_message)
+            match = eval_requests(clip_all_metadata, search["request_fields"])
 
-                if source == "api":
-                    clip_all_metadata = metadata_source.getClip(clip_id)
-                elif source == "csv":
-                    # clip_all_metadata = read clip metadata from csv
-                    pass
+            if match:
+                match_count += 1
+                return_row = []
+                for field in search.get("returns", []):
+                    return_values = find_all_field_values(clip_all_metadata, field)
+                    if not return_values:
+                        return_row.append("")
+                    else:
+                        return_row.append("; ".join(str(value) for value in return_values))
 
-                match = eval_requests(clip_all_metadata, search["requests"])
+                yield {
+                    "type": "match",
+                    "message": return_row,
+                }
 
-                if match:
-                    match_count += 1
-                    write_header = not result_csv.exists()
+        yield {
+            "type": "end",
+            "message": f"Suche '{search.get("name", "")}' beendet, {match_count} Treffer gefunden.",
+        }
 
-                    with open(result_csv, "a", newline='', encoding='utf-8') as csvfile:
-                        writer = csv.writer(csvfile)
-                        if write_header:
-                            writer.writerow(list(search.get("returns", [])))
-
-                        row = []
-                        for field in search.get("returns", []):
-                            return_values = find_all_field_values(clip_all_metadata, field)
-                            if not return_values:
-                                row.append("")
-                            else:
-                                row.append("; ".join(str(value) for value in return_values))
-                        writer.writerow(row)
-
-            end_message = f"Suche '{search_name}' beendet, {match_count} Treffer gefunden."
-            print(end_message)
-            write_log(main_log, end_message)
     except Exception as exc:
-        error_message = f"Unhandled error in main: {exc}"
-        print(error_message)
-        write_log(main_log, error_message)
-        write_log(main_log, traceback.format_exc())
-        raise exc
+        yield {
+            "type": "error",
+            "message": f"Unhandled error in searcher: {exc}",
+            "traceback": traceback.format_exc(),
+        }
 
 
 # --------- EXEC ---------
 if __name__ == "__main__":
-    searcher(datasource)
+    tb_write_log(main_log, f"{app_name} {app_version} started.")
+
+    searches = [
+        {
+            "name": "Drone",
+            "request_fields": (
+                ("has_video", "is", "true"),
+                "and",
+                ("userpath", "contains", ("Drone", "Drohne", "DJI")),
+            ),
+            "return_fields": ("clip_id", "media_space_name", "display_name", "hash", "timecode_start", "timecode_end", "userpath"),
+        }
+    ]
+
+    for search in searches:
+        result_csv = tb_make_path("searches", search["name"], "result.csv")
+
+        if result_csv.exists():
+            result_csv.unlink()
+
+        with open(result_csv, "w", newline='', encoding='utf-8') as csvfile:
+            writer = csv.writer(csvfile)
+            writer.writerow(search["return_fields"])
+
+        for event in searcher(datasource, search):
+            if event["type"] == "start":
+                print(event["message"])
+                tb_write_log(main_log, event["message"])
+
+            elif event["type"] == "progress":
+                print(event["message"])
+
+            elif event["type"] == "match":
+                with open(result_csv, "a", newline='', encoding='utf-8') as csvfile:
+                    writer = csv.writer(csvfile)
+                    writer.writerow(event["message"])
+
+            elif event["type"] == "end":
+                print(event["message"])
+                tb_write_log(main_log, event["message"])
+
+            elif event["type"] == "error":
+                print(event["message"])
+                tb_write_log(main_log, event["message"])
+                tb_write_log(main_log, event["traceback"])
 
  
