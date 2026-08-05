@@ -153,74 +153,74 @@ def make_result_file(search_name):
 
 
 # --------- MAIN ---------
-def main(source: str = None):
-    if source == "api":
-        metadata_source = link_api("metadata")
-        limit = test_mode_limit if test_mode else metadata_source.numClips()
-        clip_ids = metadata_source.clips(offset=0, limit=limit)
-
-    elif source == "csv":
-        # metadata_source = link csv file
-        # limit = test_mode_limit if test_mode else all entries
-        # clip_ids = get all metadata entries from csv
-        pass
-
-    for search in searches:
-        search_name = search["name"]
-        result_csv = make_result_file(search_name)
-        match_count = 0
-
-        start_message = f"Suche '{search_name}' gestartet"
-        print(start_message)
-        write_log(main_log, start_message)
-
-        if result_csv.exists():
-            result_csv.unlink()
-
-        for clip_index, clip_id in enumerate(clip_ids, start=1):
-            progress_message = f"Clip {clip_index} von {len(clip_ids)} durchsucht"
-            print(progress_message)
-
-            if source == "api":
-                clip_all_metadata = metadata_source.getClip(clip_id)
-            elif source == "csv":
-                # clip_all_metadata = read clip metadata from csv
-                pass
-
-            match = eval_requests(clip_all_metadata, search["requests"])
-
-            if match:
-                match_count += 1
-                write_header = not result_csv.exists()
-
-                with open(result_csv, "a", newline='', encoding='utf-8') as csvfile:
-                    writer = csv.writer(csvfile)
-                    if write_header:
-                        writer.writerow(list(search.get("returns", [])))
-
-                    row = []
-                    for field in search.get("returns", []):
-                        return_values = find_all_field_values(clip_all_metadata, field)
-                        if not return_values:
-                            row.append("")
-                        else:
-                            row.append("; ".join(str(value) for value in return_values))
-                    writer.writerow(row)
-
-        end_message = f"Suche '{search_name}' beendet, {match_count} Treffer gefunden."
-        print(end_message)
-        write_log(main_log, end_message)
-
-
-# --------- EXEC ---------
-if __name__ == "__main__":
+def searcher(source: str = None):
     try:
-        main(datasource)
+        if source == "api":
+            metadata_source = link_api("metadata")
+            limit = test_mode_limit if test_mode else metadata_source.numClips()
+            clip_ids = metadata_source.clips(offset=0, limit=limit)
 
+        elif source == "csv":
+            # metadata_source = link csv file
+            # limit = test_mode_limit if test_mode else all entries
+            # clip_ids = get all metadata entries from csv
+            pass
+
+        for search in searches:
+            search_name = search["name"]
+            result_csv = make_result_file(search_name)
+            match_count = 0
+
+            start_message = f"Suche '{search_name}' gestartet"
+            print(start_message)
+            write_log(main_log, start_message)
+
+            if result_csv.exists():
+                result_csv.unlink()
+
+            for clip_index, clip_id in enumerate(clip_ids, start=1):
+                progress_message = f"Clip {clip_index} von {len(clip_ids)} durchsucht"
+                print(progress_message)
+
+                if source == "api":
+                    clip_all_metadata = metadata_source.getClip(clip_id)
+                elif source == "csv":
+                    # clip_all_metadata = read clip metadata from csv
+                    pass
+
+                match = eval_requests(clip_all_metadata, search["requests"])
+
+                if match:
+                    match_count += 1
+                    write_header = not result_csv.exists()
+
+                    with open(result_csv, "a", newline='', encoding='utf-8') as csvfile:
+                        writer = csv.writer(csvfile)
+                        if write_header:
+                            writer.writerow(list(search.get("returns", [])))
+
+                        row = []
+                        for field in search.get("returns", []):
+                            return_values = find_all_field_values(clip_all_metadata, field)
+                            if not return_values:
+                                row.append("")
+                            else:
+                                row.append("; ".join(str(value) for value in return_values))
+                        writer.writerow(row)
+
+            end_message = f"Suche '{search_name}' beendet, {match_count} Treffer gefunden."
+            print(end_message)
+            write_log(main_log, end_message)
     except Exception as exc:
         error_message = f"Unhandled error in main: {exc}"
         print(error_message)
         write_log(main_log, error_message)
         write_log(main_log, traceback.format_exc())
+        raise exc
 
 
+# --------- EXEC ---------
+if __name__ == "__main__":
+    searcher(datasource)
+
+ 
