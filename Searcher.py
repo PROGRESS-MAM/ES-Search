@@ -6,17 +6,13 @@ from typing import Any, Dict, Iterator, List
 import csv
 
 
-# --------- CONFIG ---------
+# --------- STATIC ---------
 app_name = "Searcher"
-app_version = "0.2"
+app_version = "0.3"
 main_log = "searcher.log"
-test_mode = False
-test_mode_limit = 10
-datasource = "api"
 
 
 # --------- FUNC ---------
-
 def find_all_field_values(metadata: Any, field: str) -> List[Any]:
     seen = set()
     results = []
@@ -126,14 +122,23 @@ def eval_requests(metadata: dict, requests: tuple) -> bool:
 
 
 # --------- MAIN ---------
-def searcher(source: str = None, search: dict = None) -> Iterator[Dict[str, object]]:
+def searcher(datasource: str = None, search: dict = None, mode: str = "test 0 10") -> Iterator[Dict[str, object]]:
     try:
-        if source == "api":
+        mode_parts = mode.split()
+        if mode_parts[0] == "real":
+            test_mode = False
+            offset = 0
+        else:
+            test_mode = True
+            offset = int(mode_parts[1])
+            test_mode_limit = int(mode_parts[2])
+
+        if datasource == "api":
             metadata_source = tb_link_api("metadata")
             limit = test_mode_limit if test_mode else metadata_source.numClips()
-            clip_ids = metadata_source.clips(offset=0, limit=limit)
+            clip_ids = metadata_source.clips(offset=offset, limit=limit)
 
-        elif source == "csv":
+        elif datasource == "csv":
             # metadata_source = link csv file
             # limit = test_mode_limit if test_mode else all entries
             # clip_ids = get all metadata entries from csv
@@ -142,7 +147,7 @@ def searcher(source: str = None, search: dict = None) -> Iterator[Dict[str, obje
         match_count = 0
         yield {
             "type": "start",
-            "message": f"Suche '{search.get("name", "")}' gestartet",
+            "message": f"Suche '{search.get('name', '')}' gestartet",
         }
 
         for clip_index, clip_id in enumerate(clip_ids, start=1):
@@ -151,9 +156,9 @@ def searcher(source: str = None, search: dict = None) -> Iterator[Dict[str, obje
                 "message": f"Clip {clip_index} von {len(clip_ids)} wird durchsucht",
             }
 
-            if source == "api":
+            if datasource == "api":
                 clip_all_metadata = metadata_source.getClip(clip_id)
-            elif source == "csv":
+            elif datasource == "csv":
                 # clip_all_metadata = read clip metadata from csv
                 pass
 
@@ -162,7 +167,7 @@ def searcher(source: str = None, search: dict = None) -> Iterator[Dict[str, obje
             if match:
                 match_count += 1
                 return_row = []
-                for field in search.get("returns", []):
+                for field in search.get("return_fields", []):
                     return_values = find_all_field_values(clip_all_metadata, field)
                     if not return_values:
                         return_row.append("")
@@ -176,7 +181,7 @@ def searcher(source: str = None, search: dict = None) -> Iterator[Dict[str, obje
 
         yield {
             "type": "end",
-            "message": f"Suche '{search.get("name", "")}' beendet, {match_count} Treffer gefunden.",
+            "message": f"Suche '{search.get('name', '')}' beendet, {match_count} Treffer gefunden.",
         }
 
     except Exception as exc:
@@ -187,21 +192,30 @@ def searcher(source: str = None, search: dict = None) -> Iterator[Dict[str, obje
         }
 
 
+
+
+
+# --------- CONFIG ---------
+datasource = "api"
+mode = "test 0 10"
+#mode = "real"
+
+# --------- SEARCHES ---------
+searches = [
+    {
+        "name": "Drone",
+        "request_fields": (
+            ("has_video", "is", "true"),
+            "and",
+            ("userpath", "contains", ("Drone", "Drohne", "DJI")),
+        ),
+        "return_fields": ("clip_id", "media_space_name", "display_name", "hash", "timecode_start", "timecode_end", "userpath"),
+    }
+]
+
 # --------- EXEC ---------
 if __name__ == "__main__":
     tb_write_log(main_log, f"{app_name} {app_version} started.")
-
-    searches = [
-        {
-            "name": "Drone",
-            "request_fields": (
-                ("has_video", "is", "true"),
-                "and",
-                ("userpath", "contains", ("Drone", "Drohne", "DJI")),
-            ),
-            "return_fields": ("clip_id", "media_space_name", "display_name", "hash", "timecode_start", "timecode_end", "userpath"),
-        }
-    ]
 
     for search in searches:
         result_csv = tb_make_path("searches", search["name"], "result.csv")
@@ -213,7 +227,7 @@ if __name__ == "__main__":
             writer = csv.writer(csvfile)
             writer.writerow(search["return_fields"])
 
-        for event in searcher(datasource, search):
+        for event in searcher(datasource, search, mode):
             if event["type"] == "start":
                 print(event["message"])
                 tb_write_log(main_log, event["message"])
