@@ -248,5 +248,3 @@ if __name__ == "__main__":
                 print(event["message"])
                 tb_write_log(main_log, event["message"])
                 tb_write_log(main_log, event["traceback"])
-
- 
