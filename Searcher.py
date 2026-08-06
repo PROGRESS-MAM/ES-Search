@@ -3,7 +3,7 @@ from TOOLBOX.TOOLBOX import tb_link_api, tb_write_log, tb_make_path
 import traceback
 import json
 from typing import Any, Dict, Iterator, List
-import csv
+import datetime
 
 
 # --------- STATIC ---------
@@ -218,10 +218,7 @@ if __name__ == "__main__":
     tb_write_log(main_log, f"{app_name} {app_version} started.")
 
     for search in searches:
-        result_csv = tb_make_path("searches", search["name"], "result.csv")
-
-        if result_csv.exists():
-            result_csv.unlink()
+        result_csv = tb_make_path("searches", search["name"], f"result{datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}.csv")
 
         with open(result_csv, "w", newline='', encoding='utf-8') as csvfile:
             writer = csv.writer(csvfile)
