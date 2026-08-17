@@ -6,7 +6,7 @@ from typing import Any, Dict, Iterator, List, Optional
 import datetime
 import csv
 from dotenv import load_dotenv
-from pathlib import Path, PurePosixPath, PureWindowsPath
+from pathlib import Path
 import os
 import subprocess
 
@@ -17,7 +17,9 @@ app_version = "0.4"
 main_log = Path(__file__).parent / "searcher.log"
 
 cred_path = Path(__file__).parent / "cred.env"
+
 csv_path = Path("SMB File Exchange") / "CSV"
+csv_path_local = Path("C:/Users/Martin/Downloads")
 csv_file = "all_clips_all_metadata.csv"
 
 
@@ -55,21 +57,19 @@ class CsvMetadataSource:
 
 
 # --------- FUNC ---------
-def link_csv_file() -> CsvMetadataSource:
+def link_csv_file(local: bool = False) -> CsvMetadataSource:
+    if local:
+        return CsvMetadataSource(csv_path_local / csv_file)
+
     load_dotenv(cred_path, override=True)
     host = os.environ.get("CSV_HOST")
     user = os.environ.get("CSV_USER")
     password = os.environ.get("CSV_PASSWORD")
-    mount = "/mnt"
 
     parts = (*csv_path.parts, csv_file)
+    full_path = Path("\\\\" + "\\".join((host, *csv_path.parts, csv_file)))
 
-    if os.name == "nt":
-        full_path = Path(PureWindowsPath("//" + "/".join((host, *parts))))
-    else:
-        full_path = Path(PurePosixPath(mount, host, *parts))
-
-    if os.name == "nt" and user:
+    if user:
         share = f"\\\\{host}\\IPC$"
         command = ["net", "use", share, password, f"/user:{user}", "/persistent:no"]
         result = subprocess.run(command, capture_output=True, text=True,
@@ -206,8 +206,8 @@ def searcher(datasource: str = None, search: dict = None, mode: str = "test 0 10
             clip_stream = (metadata_source.getClip(clip_id) for clip_id in clip_ids)
             total = len(clip_ids)
 
-        elif datasource == "csv":
-            metadata_source = link_csv_file()
+        elif datasource in ("csv", "csv_local"):
+            metadata_source = link_csv_file(local=datasource == "csv_local")
             limit = test_mode_limit if test_mode else None
             clip_stream = metadata_source.iter_clips(offset=offset, limit=limit)
             total = limit
@@ -257,7 +257,7 @@ def searcher(datasource: str = None, search: dict = None, mode: str = "test 0 10
 
 # --------- CONFIG ---------
 #datasource = "api"
-datasource = "csv"
+datasource = "csv_local"
 #mode = "test 0 10000"
 mode = "real"
 
