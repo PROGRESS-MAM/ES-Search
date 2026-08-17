@@ -9,12 +9,11 @@ from dotenv import load_dotenv
 from pathlib import Path
 import os
 import subprocess
-import io
 
 
 # --------- STATIC ---------
 app_name = "Searcher"
-app_version = "0.4"
+app_version = "0.5"
 main_log = Path(__file__).parent / "searcher.log"
 
 cred_path = Path(__file__).parent / "cred.env"
@@ -35,7 +34,8 @@ class CsvMetadataSource:
             header = next(csv.reader(csvfile, delimiter=self.DELIMITER))
         self.columns = {
             field: [index for index, name in enumerate(header)
-                    if name.rsplit(".", 1)[-1].casefold() == field.casefold()]
+                    if name.casefold() == field.casefold()
+                    or ("." not in field and name.rsplit(".", 1)[-1].casefold() == field.casefold())]
             for field in fields
         }
 
@@ -86,6 +86,10 @@ def find_all_field_values(metadata: Any, field: str) -> List[Any]:
         return str(v)
 
     def collect(value: Any):
+        if isinstance(value, list):
+            for item in value:
+                collect(item)
+            return
         key = norm(value)
         if key not in seen:
             seen.add(key)
@@ -95,17 +99,33 @@ def find_all_field_values(metadata: Any, field: str) -> List[Any]:
         if isinstance(obj, dict):
             for k, v in obj.items():
                 if isinstance(k, str) and k.casefold() == field.casefold():
-                    if isinstance(v, list):
-                        for item in v:
-                            collect(item)
-                    else:
-                        collect(v)
+                    collect(v)
                 recurse(v)
         elif isinstance(obj, (list, tuple, set)):
             for item in obj:
                 recurse(item)
 
-    recurse(metadata)
+    def walk(obj: Any, segments: tuple):
+        if not segments:
+            collect(obj)
+            return
+        head, rest = segments[0], segments[1:]
+        if isinstance(obj, dict):
+            for k, v in obj.items():
+                if isinstance(k, str) and k.casefold() == head.casefold():
+                    walk(v, rest)
+        elif isinstance(obj, (list, tuple)):
+            for item in obj:
+                walk(item, segments)
+
+    if "." in field:
+        if isinstance(metadata, dict) and field in metadata:
+            collect(metadata[field])                    # flache CSV-Zeile
+        else:
+            walk(metadata, tuple(field.split(".")))     # verschachtelte API-Daten
+    else:
+        recurse(metadata)
+
     return results
 
 
@@ -227,9 +247,9 @@ def searcher(datasource: str = None, search: dict = None, mode: str = "test 0 10
         for clip_index, clip_all_metadata in enumerate(clip_stream, start=1):
             if clip_index == 1 or clip_index % step == 0:
                 if total:
-                    message = f"Clip {clip_index:_} von {total:_} wird durchsucht".replace("_", ".")
+                    message = f"Clip {clip_index:_} von {total:_}, {match_count:_} Treffer".replace("_", ".")
                 else:
-                    message = f"Clip {clip_index:_} wird durchsucht".replace("_", ".")
+                    message = f"Clip {clip_index:_} wird durchsucht, {match_count:_} Treffer".replace("_", ".")
                 yield {"type": "progress", "message": message}
 
             match = eval_requests(clip_all_metadata, search["request_fields"])
@@ -286,28 +306,35 @@ if __name__ == "__main__":
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         result_csv = tb_make_path(Path(__file__).parent, "searches", search["name"], f"result_{timestamp}.csv")
 
-        with open(result_csv, "w", newline='', encoding='utf-8') as csvfile:
+        with open(result_csv, "w", newline="", encoding="utf-8-sig") as csvfile:
             writer = csv.writer(csvfile)
             writer.writerow(search["return_fields"])
 
-        for event in searcher(datasource, search, mode):
-            if event["type"] == "start":
-                print(event["message"])
-                tb_write_log(main_log, event["message"])
+            progress_open = False
 
-            elif event["type"] == "progress":
-                print(event["message"], flush=True)
+            for event in searcher(datasource, search, mode):
+                if event["type"] == "progress":
+                    print(f"\r{event['message']:<60}", end="", flush=True)
+                    progress_open = True
+                    continue
 
-            elif event["type"] == "match":
-                with open(result_csv, "a", newline='', encoding='utf-8') as csvfile:
-                    writer = csv.writer(csvfile)
+                if event["type"] == "match":
                     writer.writerow(event["message"])
+                    continue
 
-            elif event["type"] == "end":
-                print(event["message"])
-                tb_write_log(main_log, event["message"])
+                if progress_open:
+                    print()
+                    progress_open = False
 
-            elif event["type"] == "error":
-                print(event["message"])
-                tb_write_log(main_log, event["message"])
-                tb_write_log(main_log, event["traceback"])
+                if event["type"] == "start":
+                    print(event["message"])
+                    tb_write_log(main_log, event["message"])
+
+                elif event["type"] == "end":
+                    print(event["message"])
+                    tb_write_log(main_log, event["message"])
+
+                elif event["type"] == "error":
+                    print(event["message"])
+                    tb_write_log(main_log, event["message"])
+                    tb_write_log(main_log, event["traceback"])
