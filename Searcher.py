@@ -14,7 +14,7 @@ import subprocess
 # --------- STATIC ---------
 app_name = "Searcher"
 app_version = "0.4"
-main_log = "searcher.log"
+main_log = Path(__file__).parent / "searcher.log"
 
 cred_path = Path(__file__).parent / "cred.env"
 csv_path = Path("SMB File Exchange") / "CSV"
@@ -26,20 +26,8 @@ class CsvMetadataSource:
     ENCODING = "utf-8-sig"
     DELIMITER = ","
 
-    def __init__(self, csv_path, nest_keys: bool = True) -> None:
+    def __init__(self, csv_path) -> None:
         self.csv_path = str(csv_path)
-        self.nest_keys = nest_keys
-        self.fieldnames = self._read_fieldnames()
-        self._row_count: Optional[int] = None
-        self._cursor: int = -1
-        self._iterator: Optional[Iterator[Dict[str, Any]]] = None
-
-    def _open(self):
-        return open(self.csv_path, "r", newline="", encoding=self.ENCODING)
-
-    def _read_fieldnames(self) -> List[str]:
-        with self._open() as csvfile:
-            return csv.DictReader(csvfile, delimiter=self.DELIMITER).fieldnames
 
     @staticmethod
     def _nest(row: Dict[str, str]) -> Dict[str, Any]:
@@ -56,46 +44,14 @@ class CsvMetadataSource:
             branch[leaf] = value
         return nested
 
-    def _iter_rows(self) -> Iterator[Dict[str, Any]]:
-        with self._open() as csvfile:
-            for row in csv.DictReader(csvfile, delimiter=self.DELIMITER):
-                row = {key.strip(): (value or "").strip()
-                       for key, value in row.items() if key is not None}
-                yield self._nest(row) if self.nest_keys else row
-
-    def numClips(self) -> int:
-        if self._row_count is None:
-            with self._open() as csvfile:
-                self._row_count = sum(1 for _ in csv.reader(csvfile, delimiter=self.DELIMITER)) - 1
-        return max(0, self._row_count)
-
-    def clips(self, offset: int = 0, limit: Optional[int] = None) -> List[int]:
-        total = self.numClips()
-        stop = total if limit is None else min(total, offset + limit)
-        return list(range(min(offset, total), stop))
-
-    def getClip(self, clip_id: int) -> Dict[str, Any]:
-        if self._iterator is None or clip_id <= self._cursor:
-            self._iterator = self._iter_rows()
-            self._cursor = -1
-
-        row: Optional[Dict[str, Any]] = None
-        while self._cursor < clip_id:
-            try:
-                row = next(self._iterator)
-            except StopIteration:
-                raise IndexError(f"Clip-ID {clip_id} liegt hinter dem Ende der CSV.") from None
-            self._cursor += 1
-
-        if row is None:
-            raise IndexError(f"Clip-ID {clip_id} konnte nicht gelesen werden.")
-        return row
-
-    def __len__(self) -> int:
-        return self.numClips()
-
-    def __repr__(self) -> str:
-        return f"CsvMetadataSource({self.csv_path!r}, {len(self.fieldnames)} Felder)"
+    def iter_clips(self, offset: int = 0, limit: Optional[int] = None) -> Iterator[Dict[str, Any]]:
+        with open(self.csv_path, "r", newline="", encoding=self.ENCODING) as csvfile:
+            for index, row in enumerate(csv.DictReader(csvfile, delimiter=self.DELIMITER)):
+                if index < offset:
+                    continue
+                if limit is not None and index >= offset + limit:
+                    return
+                yield self._nest({key: (value or "") for key, value in row.items() if key is not None})
 
 
 # --------- FUNC ---------
@@ -109,7 +65,7 @@ def link_csv_file() -> CsvMetadataSource:
     parts = (*csv_path.parts, csv_file)
 
     if os.name == "nt":
-        full_path = Path(PureWindowsPath(f"//{host}", *parts))
+        full_path = Path(PureWindowsPath("//" + "/".join((host, *parts))))
     else:
         full_path = Path(PurePosixPath(mount, host, *parts))
 
@@ -244,13 +200,17 @@ def searcher(datasource: str = None, search: dict = None, mode: str = "test 0 10
             test_mode_limit = int(mode_parts[2])
 
         if datasource == "api":
-            metadata_source = tb_link_api("metadata")
+            metadata_source = tb_link_api(cred_path, "metadata")
+            limit = test_mode_limit if test_mode else metadata_source.numClips()
+            clip_ids = metadata_source.clips(offset=offset, limit=limit)
+            clip_stream = (metadata_source.getClip(clip_id) for clip_id in clip_ids)
+            total = len(clip_ids)
 
         elif datasource == "csv":
             metadata_source = link_csv_file()
-
-        limit = test_mode_limit if test_mode else metadata_source.numClips()
-        clip_ids = metadata_source.clips(offset=offset, limit=limit)
+            limit = test_mode_limit if test_mode else None
+            clip_stream = metadata_source.iter_clips(offset=offset, limit=limit)
+            total = limit
 
         match_count = 0
         yield {
@@ -258,13 +218,13 @@ def searcher(datasource: str = None, search: dict = None, mode: str = "test 0 10
             "message": f"Suche '{search.get('name', '')}' gestartet",
         }
 
-        for clip_index, clip_id in enumerate(clip_ids, start=1):
-            yield {
-                "type": "progress",
-                "message": f"Clip {clip_index} von {len(clip_ids)} wird durchsucht",
-            }
+        for clip_index, clip_all_metadata in enumerate(clip_stream, start=1):
+            if total:
+                message = f"Clip {clip_index:_} von {total:_} wird durchsucht".replace("_", ".")
+            else:
+                message = f"Clip {clip_index:_} wird durchsucht".replace("_", ".")
+            yield {"type": "progress", "message": message}
 
-            clip_all_metadata = metadata_source.getClip(clip_id)
             match = eval_requests(clip_all_metadata, search["request_fields"])
 
             if match:
@@ -295,14 +255,11 @@ def searcher(datasource: str = None, search: dict = None, mode: str = "test 0 10
         }
 
 
-
-
-
 # --------- CONFIG ---------
 #datasource = "api"
 datasource = "csv"
-mode = "test 0 10"
-#mode = "real"
+#mode = "test 0 10000"
+mode = "real"
 
 # --------- SEARCHES ---------
 searches = [
@@ -323,7 +280,7 @@ if __name__ == "__main__":
 
     for search in searches:
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        result_csv = tb_make_path("searches", search["name"], f"result_{timestamp}.csv")
+        result_csv = tb_make_path(Path(__file__).parent, "searches", search["name"], f"result_{timestamp}.csv")
 
         with open(result_csv, "w", newline='', encoding='utf-8') as csvfile:
             writer = csv.writer(csvfile)
@@ -335,7 +292,7 @@ if __name__ == "__main__":
                 tb_write_log(main_log, event["message"])
 
             elif event["type"] == "progress":
-                print(event["message"])
+                print(event["message"], flush=True)
 
             elif event["type"] == "match":
                 with open(result_csv, "a", newline='', encoding='utf-8') as csvfile:
