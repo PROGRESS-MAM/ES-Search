@@ -2,17 +2,141 @@
 from toolbox import tb_link_api, tb_write_log, tb_make_path
 import traceback
 import json
-from typing import Any, Dict, Iterator, List
+from typing import Any, Dict, Iterator, List, Optional, Sequence 
 import datetime
+import csv
+from dotenv import load_dotenv
+from pathlib import Path, PurePosixPath, PureWindowsPath
+import os
+import subprocess
 
 
 # --------- STATIC ---------
 app_name = "Searcher"
-app_version = "0.3"
+app_version = "0.4"
 main_log = "searcher.log"
+
+cred_path = Path(__file__).parent / "cred.env"
+csv_path = Path("SMB File Exchange") / "CSV"
+csv_file = "all_clips_all_metadata.csv"
+
+
+# --------- CLASS ---------
+class CsvMetadataSource:
+    ENCODING = "utf-8-sig"
+    DELIMITER = ","
+
+    def __init__(self, csv_path, nest_keys: bool = True) -> None:
+        self.csv_path = str(csv_path)
+        self.nest_keys = nest_keys
+        self.fieldnames = self._read_fieldnames()
+        self._row_count: Optional[int] = None
+        self._cursor: int = -1
+        self._iterator: Optional[Iterator[Dict[str, Any]]] = None
+
+    def _open(self):
+        return open(self.csv_path, "r", newline="", encoding=self.ENCODING)
+
+    def _read_fieldnames(self) -> List[str]:
+        with self._open() as csvfile:
+            fieldnames = csv.DictReader(csvfile, delimiter=self.DELIMITER).fieldnames
+        return [name.strip() for name in fieldnames]
+
+    @staticmethod
+    def _nest(row: Dict[str, str]) -> Dict[str, Any]:
+        nested: Dict[str, Any] = {}
+        for key, value in row.items():
+            branch = nested
+            *path, leaf = key.split(".")
+            for segment in path:
+                node = branch.get(segment)
+                if not isinstance(node, dict):
+                    node = {}
+                    branch[segment] = node
+                branch = node
+            branch[leaf] = value
+        return nested
+
+    def _iter_rows(self) -> Iterator[Dict[str, Any]]:
+        with self._open() as csvfile:
+            for row in csv.DictReader(csvfile, delimiter=self.DELIMITER):
+                row = {key.strip(): (value or "").strip()
+                       for key, value in row.items() if key is not None}
+                yield self._nest(row) if self.nest_keys else row
+
+    def iter_clips(self, offset: int = 0, limit: Optional[int] = None) -> Iterator[Dict[str, Any]]:
+        for index, row in enumerate(self._iter_rows()):
+            if index < offset:
+                continue
+            if limit is not None and index >= offset + limit:
+                return
+            yield row
+
+    def numClips(self) -> int:
+        if self._row_count is None:
+            with self._open() as csvfile:
+                self._row_count = sum(1 for _ in csv.reader(csvfile, delimiter=self.DELIMITER)) - 1
+        return max(0, self._row_count)
+
+    def clips(self, offset: int = 0, limit: Optional[int] = None) -> List[int]:
+        total = self.numClips()
+        stop = total if limit is None else min(total, offset + limit)
+        return list(range(min(offset, total), stop))
+
+    def getClip(self, clip_id: int) -> Dict[str, Any]:
+        if self._iterator is None or clip_id <= self._cursor:
+            self._iterator = self._iter_rows()
+            self._cursor = -1
+
+        row: Optional[Dict[str, Any]] = None
+        while self._cursor < clip_id:
+            try:
+                row = next(self._iterator)
+            except StopIteration:
+                raise IndexError(f"Clip-ID {clip_id} liegt hinter dem Ende der CSV.") from None
+            self._cursor += 1
+
+        if row is None:
+            raise IndexError(f"Clip-ID {clip_id} konnte nicht gelesen werden.")
+        return row
+
+    def __len__(self) -> int:
+        return self.numClips()
+
+    def __repr__(self) -> str:
+        return f"CsvMetadataSource({self.csv_path!r}, {len(self.fieldnames)} Felder)"
 
 
 # --------- FUNC ---------
+def link_csv_file() -> CsvMetadataSource:
+    load_dotenv(cred_path, override=True)
+    host = os.environ.get("CSV_HOST")
+    user = os.environ.get("CSV_USER")
+    password = os.environ.get("CSV_PASSWORD")
+    mount = "/mnt"
+
+    parts = (*csv_path.parts, csv_file)
+
+    if os.name == "nt":
+        full_path = Path(PureWindowsPath(f"//{host}", *parts))
+    else:
+        full_path = Path(PurePosixPath(mount, host, *parts))
+
+    if os.name == "nt":
+        share = f"\\\\{host}\\IPC$"
+        command = ["net", "use", share, password or "*", f"/user:{user}", "/persistent:no"]
+        result = subprocess.run(command, capture_output=True, text=True,
+                                encoding="utf-8", errors="replace")
+        if result.returncode != 0:
+            output = (result.stdout + "\n" + result.stderr).strip()
+            raise RuntimeError(f"Netzwerkfreigabe konnte nicht verbunden werden ({share}): {output}")
+
+    if not full_path.is_file():
+        raise FileNotFoundError(f"CSV-Datei nicht erreichbar: {full_path}")
+
+    return CsvMetadataSource(full_path)
+
+
 def find_all_field_values(metadata: Any, field: str) -> List[Any]:
     seen = set()
     results = []
@@ -135,14 +259,12 @@ def searcher(datasource: str = None, search: dict = None, mode: str = "test 0 10
 
         if datasource == "api":
             metadata_source = tb_link_api("metadata")
-            limit = test_mode_limit if test_mode else metadata_source.numClips()
-            clip_ids = metadata_source.clips(offset=offset, limit=limit)
 
         elif datasource == "csv":
-            # metadata_source = link csv file
-            # limit = test_mode_limit if test_mode else all entries
-            # clip_ids = get all metadata entries from csv
-            pass
+            metadata_source = link_csv_file()
+
+        limit = test_mode_limit if test_mode else metadata_source.numClips()
+        clip_ids = metadata_source.clips(offset=offset, limit=limit)
 
         match_count = 0
         yield {
@@ -196,7 +318,8 @@ def searcher(datasource: str = None, search: dict = None, mode: str = "test 0 10
 
 
 # --------- CONFIG ---------
-datasource = "api"
+#datasource = "api"
+datasource = "csv"
 mode = "test 0 10"
 #mode = "real"
 
@@ -218,7 +341,8 @@ if __name__ == "__main__":
     tb_write_log(main_log, f"{app_name} {app_version} started.")
 
     for search in searches:
-        result_csv = tb_make_path("searches", search["name"], f"result{datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}.csv")
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        result_csv = tb_make_path("searches", search["name"], f"result_{timestamp}.csv")
 
         with open(result_csv, "w", newline='', encoding='utf-8') as csvfile:
             writer = csv.writer(csvfile)
