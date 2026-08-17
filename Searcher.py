@@ -2,7 +2,7 @@
 from toolbox import tb_link_api, tb_write_log, tb_make_path
 import traceback
 import json
-from typing import Any, Dict, Iterator, List, Optional, Sequence 
+from typing import Any, Dict, Iterator, List, Optional 
 import datetime
 import csv
 from dotenv import load_dotenv
@@ -39,8 +39,7 @@ class CsvMetadataSource:
 
     def _read_fieldnames(self) -> List[str]:
         with self._open() as csvfile:
-            fieldnames = csv.DictReader(csvfile, delimiter=self.DELIMITER).fieldnames
-        return [name.strip() for name in fieldnames]
+            return csv.DictReader(csvfile, delimiter=self.DELIMITER).fieldnames
 
     @staticmethod
     def _nest(row: Dict[str, str]) -> Dict[str, Any]:
@@ -63,14 +62,6 @@ class CsvMetadataSource:
                 row = {key.strip(): (value or "").strip()
                        for key, value in row.items() if key is not None}
                 yield self._nest(row) if self.nest_keys else row
-
-    def iter_clips(self, offset: int = 0, limit: Optional[int] = None) -> Iterator[Dict[str, Any]]:
-        for index, row in enumerate(self._iter_rows()):
-            if index < offset:
-                continue
-            if limit is not None and index >= offset + limit:
-                return
-            yield row
 
     def numClips(self) -> int:
         if self._row_count is None:
@@ -122,20 +113,15 @@ def link_csv_file() -> CsvMetadataSource:
     else:
         full_path = Path(PurePosixPath(mount, host, *parts))
 
-    if os.name == "nt":
+    if os.name == "nt" and user:
         share = f"\\\\{host}\\IPC$"
-        command = ["net", "use", share, password or "*", f"/user:{user}", "/persistent:no"]
+        command = ["net", "use", share, password, f"/user:{user}", "/persistent:no"]
         result = subprocess.run(command, capture_output=True, text=True,
                                 encoding="utf-8", errors="replace")
         if result.returncode != 0:
-            output = (result.stdout + "\n" + result.stderr).strip()
-            raise RuntimeError(f"Netzwerkfreigabe konnte nicht verbunden werden ({share}): {output}")
-
-    if not full_path.is_file():
-        raise FileNotFoundError(f"CSV-Datei nicht erreichbar: {full_path}")
+            raise RuntimeError(f"net use fehlgeschlagen: {result.stdout} {result.stderr}")
 
     return CsvMetadataSource(full_path)
-
 
 def find_all_field_values(metadata: Any, field: str) -> List[Any]:
     seen = set()
@@ -278,12 +264,7 @@ def searcher(datasource: str = None, search: dict = None, mode: str = "test 0 10
                 "message": f"Clip {clip_index} von {len(clip_ids)} wird durchsucht",
             }
 
-            if datasource == "api":
-                clip_all_metadata = metadata_source.getClip(clip_id)
-            elif datasource == "csv":
-                # clip_all_metadata = read clip metadata from csv
-                pass
-
+            clip_all_metadata = metadata_source.getClip(clip_id)
             match = eval_requests(clip_all_metadata, search["request_fields"])
 
             if match:
