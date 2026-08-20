@@ -45,7 +45,7 @@ if __name__ == "__main__":
         print(f"\r{message:<60}", end="", flush=True)
 
     searcher.link(metadata_source, cred_path, offset=offset, limit=limit,
-                  on_progress=print_progress, api_link=lambda: tb_link_api("metadata"))
+                  on_progress=print_progress, api_link=lambda: tb_link_api(cred_path, "metadata"))
 
     for search in searches:
         match, progress, error = searcher.find(search)

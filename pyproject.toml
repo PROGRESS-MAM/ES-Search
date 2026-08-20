@@ -1,16 +1,28 @@
 [build-system]
-requires = ["setuptools>=68", "wheel"]
+requires = ["setuptools>=61", "wheel"]
 build-backend = "setuptools.build_meta"
+
 
 [project]
 name = "searcher"
-version = "0.6.0"
-description = "Modul zum Durchsuchen von Clip-Metadaten (Metadata-API oder CSV)"
+description = "Modul zum Durchsuchen von Clip-Metadaten"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
+dynamic = ["version"]
 dependencies = [
     "python-dotenv",
 ]
+
+
+[project.optional-dependencies]
+api = [
+    "toolbox @ git+https://github.com/PROGRESS-MAM/TOOLBOX.git@main",
+]
+
+
+[tool.setuptools.dynamic]
+version = {attr = "searcher.searcher.app_version"}
+
 
 [tool.setuptools.packages.find]
 where = ["."]

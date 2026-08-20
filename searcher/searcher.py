@@ -236,9 +236,11 @@ def eval_requests(metadata: dict, requests: tuple) -> bool:
 
 
 # --------- MAIN ---------
-def link(metadata_source: str, cred_path: Union[str, Path], offset: Union[int, bool], limit: Union[int, bool],
-        on_progress: Optional[Callable[[str], None]], api_link: Optional[Callable[[], Any]]) -> None:
-    
+def link(metadata_source: str = "csv", cred_path: Union[str, Path] = None,
+         offset: Union[int, bool] = 0, limit: Union[int, bool] = False,
+         on_progress: Optional[Callable[[str], None]] = None,
+         api_link: Optional[Callable[[], Any]] = None) -> None:
+
     if metadata_source not in ("api", "csv"):
         raise ValueError(f"Unbekannte Datenquelle '{metadata_source}', erlaubt: 'api', 'csv'.")
 
@@ -256,7 +258,7 @@ def link(metadata_source: str, cred_path: Union[str, Path], offset: Union[int, b
     if metadata_source == "api":
         if not callable(api_link):
             raise ValueError("Fuer die Datenquelle 'api' wird api_link benoetigt, "
-                             "z.B. api_link=lambda: tb_link_api(\"metadata\").")
+                             "z.B. api_link=lambda: tb_link_api(cred_path, \"metadata\").")
         link_state["api"] = api_link()
     else:
         link_state["csv_full_path"] = mount_csv_share()
