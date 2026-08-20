@@ -1,9 +1,8 @@
 # --------- IMPORTS ---------
-from toolbox import tb_link_api, tb_write_log, tb_make_path
+from toolbox import tb_link_api
 import traceback
 import json
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
-import datetime
 import csv
 from dotenv import load_dotenv
 from pathlib import Path
@@ -14,9 +13,8 @@ import subprocess
 # --------- STATIC ---------
 app_name = "Searcher"
 app_version = "0.6"
-main_log = Path(__file__).parent / "searcher.log"
 
-csv_path = Path("SMB File Exchange") / "CSV"
+csv_path = Path("SMB File Exchange") / "CSV"      # Share-Pfad ab Host, ohne Dateiname
 csv_file = "all_clips_all_metadata.csv"
 
 
@@ -25,7 +23,7 @@ link_state: Dict[str, Any] = {
     "metadata_source": None,    # "api" oder "csv"
     "cred_path": None,          # vom Caller uebergeben
     "offset": 0,                # Zahl oder False
-    "limit": False,             # Zahl oder False (False = alles)
+    "limit": False,             # Zahl oder False (= alle Clips / Rows)
     "on_progress": None,        # optionaler Callback(str)
     "api": None,                # verbundene API-Instanz
     "csv_full_path": None,      # gemounteter CSV-Pfad
@@ -82,15 +80,16 @@ def mount_csv_share() -> Path:
     cred_path = link_state.get("cred_path")
     if not cred_path:
         raise RuntimeError("Kein cred_path gesetzt, bitte searcher.link(...) aufrufen.")
+    if not Path(cred_path).is_file():
+        raise FileNotFoundError(f"cred.env nicht gefunden: '{cred_path}'")
 
     load_dotenv(cred_path, override=True)
     host = os.environ.get("CSV_HOST")
     user = os.environ.get("CSV_USER")
     password = os.environ.get("CSV_PASSWORD")
 
-    if not all((host, user, password)):
-        raise RuntimeError(f"CSV_HOST, CSV_USER, CSV_PASSWORD fehlt in '{cred_path}'.")
-
+    if not host:
+        raise RuntimeError(f"CSV_HOST fehlt in '{cred_path}'.")
 
     full_path = Path("\\\\" + "\\".join((host, *csv_path.parts, csv_file)))
 
@@ -237,7 +236,14 @@ def eval_requests(metadata: dict, requests: tuple) -> bool:
 
 
 # --------- MAIN ---------
-def link(metadata_source: str, cred_path: Union[str, Path], offset: Union[int, bool], limit: Union[int, bool], on_progress: Optional[Callable[[str], None]]) -> None:
+def link(metadata_source: str = "csv", cred_path: Union[str, Path] = None,
+         offset: Union[int, bool] = 0, limit: Union[int, bool] = False,
+         on_progress: Optional[Callable[[str], None]] = None) -> None:
+    """Verbindet die Datenquelle. Den CSV-Pfad kennt das Modul selbst,
+    offset / limit sind eine Zahl oder False (= alles)."""
+    if metadata_source not in ("api", "csv"):
+        raise ValueError(f"Unbekannte Datenquelle '{metadata_source}', erlaubt: 'api', 'csv'.")
+
     link_state["metadata_source"] = metadata_source
     link_state["cred_path"] = Path(cred_path) if cred_path else None
     link_state["offset"] = offset
@@ -249,7 +255,7 @@ def link(metadata_source: str, cred_path: Union[str, Path], offset: Union[int, b
     report_progress(f"Datenquelle '{metadata_source}' wird verbunden")
 
     if metadata_source == "api":
-        link_state["api"] = tb_link_api(cred_path, "metadata")
+        link_state["api"] = tb_link_api("metadata")
     else:
         link_state["csv_full_path"] = mount_csv_share()
 
@@ -317,55 +323,3 @@ def find(search: dict = None, offset: Union[int, bool, None] = None,
     except Exception as exc:
         error = f"Unhandled error in searcher: {exc}\n{traceback.format_exc()}"
         return matches, progress, error
-
-
-
-
-
-
-
-# --------- CONFIG ---------
-metadata_source = "csv"     # "api"
-cred_path = Path(__file__).parent / "cred.env"
-offset = 0
-limit = False
-
-# --------- SEARCHES ---------
-searches = [
-    {
-        "name": "LTO Content",
-        "request_fields": (
-            ("display_backups", "is", "LS1901L7"),
-        ),
-        "return_fields": ("clip_id", "media_space_name", "display_name", "hash", "userpath", "display_backups"),
-    }
-]
-
-# --------- EXEC ---------
-if __name__ == "__main__":
-    tb_write_log(main_log, f"{app_name} {app_version} started.")
-
-    def print_progress(message: str) -> None:
-        print(f"\r{message:<60}", end="", flush=True)
-
-    link(metadata_source, cred_path, offset=offset, limit=limit, on_progress=print_progress)
-
-    for search in searches:
-        match, progress, error = find(search)
-        print()
-
-        if error:
-            print(error)
-            tb_write_log(main_log, error)
-            continue
-
-        timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        result_csv = tb_make_path(Path(__file__).parent, "searches", search["name"], f"result_{timestamp}.csv")
-
-        with open(result_csv, "w", newline="", encoding="utf-8-sig") as csvfile:
-            writer = csv.writer(csvfile)
-            writer.writerow(search["return_fields"])
-            writer.writerows(match)
-
-        print(progress)
-        tb_write_log(main_log, progress)

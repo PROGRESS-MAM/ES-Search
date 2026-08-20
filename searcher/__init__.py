@@ -1,2 +1,2 @@
 # --------- IMPORTS ---------
-from .searcher import link, find
+from .searcher import app_name, app_version, link, find

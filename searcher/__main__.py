@@ -2,15 +2,24 @@
 
 # --------- IMPORTS ---------
 from toolbox import tb_write_log, tb_make_path
-from .searcher import app_name, app_version, main_log, link, find
+from . import searcher
 import datetime
 import csv
 from pathlib import Path
 
 
+# --------- STATIC ---------
+app_name = "Search Runner"
+app_version = "0.1"
+
+base_path = Path(__file__).parent
+main_log = base_path / "searcher.log"
+cred_path = base_path / "cred.env"
+result_path = base_path / "searches"
+
+
 # --------- CONFIG ---------
-metadata_source = "csv" # "api"
-cred_path = Path(__file__).parent / "cred.env"
+metadata_source = "csv"     # "api"
 offset = 0
 limit = False
 
@@ -29,15 +38,16 @@ searches = [
 
 # --------- EXEC ---------
 if __name__ == "__main__":
-    tb_write_log(main_log, f"{app_name} {app_version} started.")
+    tb_write_log(main_log, f"{app_name} {app_version} started, "
+                           f"{searcher.app_name} {searcher.app_version} verlinkt.")
 
     def print_progress(message: str) -> None:
         print(f"\r{message:<60}", end="", flush=True)
 
-    link(metadata_source, cred_path, offset=offset, limit=limit, on_progress=print_progress)
+    searcher.link(metadata_source, cred_path, offset=offset, limit=limit, on_progress=print_progress)
 
     for search in searches:
-        match, progress, error = find(search)
+        match, progress, error = searcher.find(search)
         print()
 
         if error:
@@ -46,7 +56,7 @@ if __name__ == "__main__":
             continue
 
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        result_csv = tb_make_path(Path(__file__).parent, "searches", search["name"], f"result_{timestamp}.csv")
+        result_csv = tb_make_path(result_path, search["name"], f"result_{timestamp}.csv")
 
         with open(result_csv, "w", newline="", encoding="utf-8-sig") as csvfile:
             writer = csv.writer(csvfile)
