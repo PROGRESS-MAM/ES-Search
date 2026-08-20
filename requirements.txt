@@ -1,2 +1,2 @@
 toolbox @ git+https://github.com/PROGRESS-MAM/TOOLBOX.git
-dotenv
+python-dotenv
