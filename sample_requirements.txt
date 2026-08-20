@@ -1,5 +1,5 @@
 --extra-index-url https://artifacts.editshare.com/artifactory/api/pypi/editshare-pypi-public/simple
 
--e .
 editshare-flow-api~=2026.2.1.0
 toolbox @ git+https://github.com/PROGRESS-MAM/TOOLBOX.git@main
+searcher @ git+https://github.com/PROGRESS-MAM/ES-Search.git@main

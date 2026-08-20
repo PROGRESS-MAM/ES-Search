@@ -1,5 +1,4 @@
 # --------- IMPORTS ---------
-from toolbox import tb_link_api
 import traceback
 import json
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
@@ -22,6 +21,7 @@ csv_file = "all_clips_all_metadata.csv"
 link_state: Dict[str, Any] = {
     "metadata_source": None,    # "api" oder "csv"
     "cred_path": None,          # vom Caller uebergeben
+    "api_link": None,           # Callable des Callers, liefert die API-Instanz
     "offset": 0,                # Zahl oder False
     "limit": False,             # Zahl oder False (= alle Clips / Rows)
     "on_progress": None,        # optionaler Callback(str)
@@ -236,16 +236,15 @@ def eval_requests(metadata: dict, requests: tuple) -> bool:
 
 
 # --------- MAIN ---------
-def link(metadata_source: str = "csv", cred_path: Union[str, Path] = None,
-         offset: Union[int, bool] = 0, limit: Union[int, bool] = False,
-         on_progress: Optional[Callable[[str], None]] = None) -> None:
-    """Verbindet die Datenquelle. Den CSV-Pfad kennt das Modul selbst,
-    offset / limit sind eine Zahl oder False (= alles)."""
+def link(metadata_source: str, cred_path: Union[str, Path], offset: Union[int, bool], limit: Union[int, bool],
+        on_progress: Optional[Callable[[str], None]], api_link: Optional[Callable[[], Any]]) -> None:
+    
     if metadata_source not in ("api", "csv"):
         raise ValueError(f"Unbekannte Datenquelle '{metadata_source}', erlaubt: 'api', 'csv'.")
 
     link_state["metadata_source"] = metadata_source
     link_state["cred_path"] = Path(cred_path) if cred_path else None
+    link_state["api_link"] = api_link
     link_state["offset"] = offset
     link_state["limit"] = limit
     link_state["on_progress"] = on_progress
@@ -255,7 +254,10 @@ def link(metadata_source: str = "csv", cred_path: Union[str, Path] = None,
     report_progress(f"Datenquelle '{metadata_source}' wird verbunden")
 
     if metadata_source == "api":
-        link_state["api"] = tb_link_api("metadata")
+        if not callable(api_link):
+            raise ValueError("Fuer die Datenquelle 'api' wird api_link benoetigt, "
+                             "z.B. api_link=lambda: tb_link_api(\"metadata\").")
+        link_state["api"] = api_link()
     else:
         link_state["csv_full_path"] = mount_csv_share()
 

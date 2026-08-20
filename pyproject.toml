@@ -10,7 +10,6 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "python-dotenv",
-    "editshare-flow-api~=2026.2.1.0",
 ]
 
 [tool.setuptools.packages.find]

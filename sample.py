@@ -1,7 +1,7 @@
 ######################## SAMPLE IMPLEMENTATION ###############################
 
 # --------- IMPORTS ---------
-from toolbox import tb_write_log, tb_make_path
+from toolbox import tb_link_api, tb_write_log, tb_make_path
 import searcher
 import datetime
 import csv
@@ -44,7 +44,8 @@ if __name__ == "__main__":
     def print_progress(message: str) -> None:
         print(f"\r{message:<60}", end="", flush=True)
 
-    searcher.link(metadata_source, cred_path, offset=offset, limit=limit, on_progress=print_progress)
+    searcher.link(metadata_source, cred_path, offset=offset, limit=limit,
+                  on_progress=print_progress, api_link=lambda: tb_link_api("metadata"))
 
     for search in searches:
         match, progress, error = searcher.find(search)
