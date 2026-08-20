@@ -241,6 +241,11 @@ def link(metadata_source: str = "csv", cred_path: Union[str, Path] = None,
          on_progress: Optional[Callable[[str], None]] = None,
          api_link: Optional[Callable[[], Any]] = None) -> None:
 
+    """Verbindet die Datenquelle. Den CSV-Pfad kennt das Modul selbst,
+    offset / limit sind eine Zahl oder False (= alles).
+    Fuer metadata_source 'api' liefert der Caller api_link mit z.B.
+    lambda: tb_link_api(cred_path, "metadata")."""
+
     if metadata_source not in ("api", "csv"):
         raise ValueError(f"Unbekannte Datenquelle '{metadata_source}', erlaubt: 'api', 'csv'.")
 
