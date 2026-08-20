@@ -80,9 +80,15 @@ Die Auswertung erfolgt strikt von links nach rechts, ohne Klammerung und ohne Op
 (A, "or",  B, "and", C)    #  ->  (A or B) and C
 ```
 
-## Direkter Aufruf
+## Beispielimplementierung
 
-`Searcher.py` enthält am Ende eine Beispielimplementierung. Direkt gestartet führt sie die
-konfigurierten Suchen aus und schreibt die Treffer nach
-`searches/<name>/result_<zeitstempel>.csv`; Statusmeldungen und Fehler landen zusätzlich in
-`searcher.log`.
+`sample.py` im Wurzelverzeichnis zeigt einen vollständigen Caller: Konfiguration, Suchdefinitionen,
+Logging und CSV-Ausgabe. Aufruf:
+
+```bash
+python sample.py
+```
+
+Die Treffer landen in `searches/<name>/result_<zeitstempel>.csv`, Statusmeldungen und Fehler
+zusätzlich in `searcher.log`. Beide Pfade sowie der Pfad zur `cred.env` werden in `sample.py`
+gesetzt.

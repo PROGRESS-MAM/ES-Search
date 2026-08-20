@@ -2,7 +2,7 @@
 
 # --------- IMPORTS ---------
 from toolbox import tb_write_log, tb_make_path
-from . import searcher
+import searcher
 import datetime
 import csv
 from pathlib import Path
