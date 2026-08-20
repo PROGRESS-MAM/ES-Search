@@ -88,8 +88,9 @@ def mount_csv_share() -> Path:
     user = os.environ.get("CSV_USER")
     password = os.environ.get("CSV_PASSWORD")
 
-    if not any(host, user, password):
+    if not all((host, user, password)):
         raise RuntimeError(f"CSV_HOST, CSV_USER, CSV_PASSWORD fehlt in '{cred_path}'.")
+
 
     full_path = Path("\\\\" + "\\".join((host, *csv_path.parts, csv_file)))
 
