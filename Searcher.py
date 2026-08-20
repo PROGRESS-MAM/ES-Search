@@ -15,8 +15,22 @@ import subprocess
 app_name = "Searcher"
 app_version = "0.6"
 main_log = Path(__file__).parent / "searcher.log"
+
 csv_path = Path("SMB File Exchange") / "CSV"
 csv_file = "all_clips_all_metadata.csv"
+
+
+# --------- STATE ---------
+link_state: Dict[str, Any] = {
+    "metadata_source": None,    # "api" oder "csv"
+    "cred_path": None,          # vom Caller uebergeben
+    "offset": 0,                # Zahl oder False
+    "limit": False,             # Zahl oder False (False = alles)
+    "on_progress": None,        # optionaler Callback(str)
+    "api": None,                # verbundene API-Instanz
+    "csv_full_path": None,      # gemounteter CSV-Pfad
+}
+
 
 # --------- CLASS ---------
 class CsvMetadataSource:
@@ -52,11 +66,30 @@ class CsvMetadataSource:
 
 
 # --------- FUNC ---------
-def link_csv_file(cred_path, fields) -> CsvMetadataSource:
+def normalize_range(value: Union[int, bool, None], default: Optional[int]) -> Optional[int]:
+    if value is False or value is None:
+        return default
+    return int(value)
+
+
+def report_progress(message: str) -> None:
+    callback = link_state.get("on_progress")
+    if callable(callback):
+        callback(message)
+
+
+def mount_csv_share() -> Path:
+    cred_path = link_state.get("cred_path")
+    if not cred_path:
+        raise RuntimeError("Kein cred_path gesetzt, bitte searcher.link(...) aufrufen.")
+
     load_dotenv(cred_path, override=True)
     host = os.environ.get("CSV_HOST")
     user = os.environ.get("CSV_USER")
     password = os.environ.get("CSV_PASSWORD")
+
+    if not any(host, user, password):
+        raise RuntimeError(f"CSV_HOST, CSV_USER, CSV_PASSWORD fehlt in '{cred_path}'.")
 
     full_path = Path("\\\\" + "\\".join((host, *csv_path.parts, csv_file)))
 
@@ -68,7 +101,8 @@ def link_csv_file(cred_path, fields) -> CsvMetadataSource:
         if result.returncode != 0:
             raise RuntimeError(f"net use fehlgeschlagen: {result.stdout} {result.stderr}")
 
-    return CsvMetadataSource(full_path, fields)
+    return full_path
+
 
 def find_all_field_values(metadata: Any, field: str) -> List[Any]:
     seen = set()
@@ -131,7 +165,7 @@ def eval_request_item(metadata: dict, request_item: tuple) -> bool:
 
     if not actual_values:
         return False
-    
+
     if request_operator == "is":
         for value in actual_values:
             if str(value).casefold() == str(request_value).casefold():
@@ -170,6 +204,8 @@ def eval_request_item(metadata: dict, request_item: tuple) -> bool:
 
         return False
 
+    return False
+
 
 def eval_requests(metadata: dict, requests: tuple) -> bool:
     result = []
@@ -200,86 +236,97 @@ def eval_requests(metadata: dict, requests: tuple) -> bool:
 
 
 # --------- MAIN ---------
-def searcher(cred_path: Path, datasource: str = None, search: dict = None, mode: str = None) -> Iterator[Dict[str, object]]:
+def link(metadata_source: str, cred_path: Union[str, Path], offset: Union[int, bool], limit: Union[int, bool], on_progress: Optional[Callable[[str], None]]) -> None:
+    link_state["metadata_source"] = metadata_source
+    link_state["cred_path"] = Path(cred_path) if cred_path else None
+    link_state["offset"] = offset
+    link_state["limit"] = limit
+    link_state["on_progress"] = on_progress
+    link_state["api"] = None
+    link_state["csv_full_path"] = None
+
+    report_progress(f"Datenquelle '{metadata_source}' wird verbunden")
+
+    if metadata_source == "api":
+        link_state["api"] = tb_link_api(cred_path, "metadata")
+    else:
+        link_state["csv_full_path"] = mount_csv_share()
+
+
+def find(search: dict = None, offset: Union[int, bool, None] = None,
+         limit: Union[int, bool, None] = None) -> Tuple[List[List[str]], str, Optional[str]]:
+    """Durchsucht die verlinkte Datenquelle.
+    Rueckgabe: match (Liste der Ergebniszeilen), progress (Statustext), error (Text oder None)."""
+    matches: List[List[str]] = []
+    progress = ""
+
     try:
-        mode_parts = mode.split()
-        if mode_parts[0] == "real":
-            test_mode = False
-            offset = 0
-        else:
-            test_mode = True
-            offset = int(mode_parts[1])
-            test_mode_limit = int(mode_parts[2])
+        metadata_source = link_state.get("metadata_source")
+        if not metadata_source:
+            raise RuntimeError("Keine Datenquelle verlinkt, bitte searcher.link(...) aufrufen.")
+        if not search:
+            raise ValueError("Keine Suche uebergeben.")
+
+        offset_value = normalize_range(offset if offset is not None else link_state["offset"], 0)
+        limit_value = normalize_range(limit if limit is not None else link_state["limit"], None)
 
         fields = tuple(dict.fromkeys(
             [item[0] for item in search["request_fields"] if isinstance(item, tuple)]
             + list(search.get("return_fields", []))
         ))
 
-        yield {"type": "progress", "message": f"Datenquelle '{datasource}' wird verbunden"}
-
-        if datasource == "api":
-            metadata_source = tb_link_api(cred_path, "metadata")
-            limit = test_mode_limit if test_mode else metadata_source.numClips()
-            clip_ids = metadata_source.clips(offset=offset, limit=limit)
-            clip_stream = (metadata_source.getClip(clip_id) for clip_id in clip_ids)
+        if metadata_source == "api":
+            api = link_state["api"]
+            api_limit = limit_value if limit_value is not None else api.numClips()
+            clip_ids = api.clips(offset=offset_value, limit=api_limit)
+            clip_stream = (api.getClip(clip_id) for clip_id in clip_ids)
             total = len(clip_ids)
             step = 1
 
-        elif datasource == "csv":
-            metadata_source = link_csv_file(cred_path, fields)
-            limit = test_mode_limit if test_mode else None
-            clip_stream = metadata_source.iter_clips(offset=offset, limit=limit)
-            total = limit
+        else:
+            csv_source = CsvMetadataSource(link_state["csv_full_path"], fields)
+            clip_stream = csv_source.iter_clips(offset=offset_value, limit=limit_value)
+            total = limit_value
             step = 1000
 
-        match_count = 0
         clip_index = 0
-        yield {
-            "type": "start",
-            "message": f"Suche '{search.get('name', '')}' gestartet",
-        }
+        report_progress(f"Suche '{search.get('name', '')}' gestartet")
 
         for clip_index, clip_all_metadata in enumerate(clip_stream, start=1):
             if clip_index == 1 or clip_index % step == 0:
                 if total:
-                    message = f"Clip {clip_index:_} von {total:_}, {match_count:_} Treffer".replace("_", ".")
+                    message = f"Clip {clip_index:_} von {total:_}, {len(matches):_} Treffer".replace("_", ".")
                 else:
-                    message = f"Clip {clip_index:_} wird durchsucht, {match_count:_} Treffer".replace("_", ".")
-                yield {"type": "progress", "message": message}
+                    message = f"Clip {clip_index:_} wird durchsucht, {len(matches):_} Treffer".replace("_", ".")
+                report_progress(message)
 
-            match = eval_requests(clip_all_metadata, search["request_fields"])
-
-            if match:
-                match_count += 1
+            if eval_requests(clip_all_metadata, search["request_fields"]):
                 return_row = []
                 for field in search.get("return_fields", []):
                     return_values = find_all_field_values(clip_all_metadata, field)
                     return_row.append("; ".join(str(value) for value in return_values))
+                matches.append(return_row)
 
-                yield {
-                    "type": "match",
-                    "message": return_row,
-                }
+        progress = (f"Suche '{search.get('name', '')}' beendet, {clip_index:_} Clips geprueft, "
+                    f"{len(matches):_} Treffer gefunden.").replace("_", ".")
+        report_progress(progress)
 
-        yield {
-            "type": "end",
-            "message": f"Suche '{search.get('name', '')}' beendet, {clip_index:_} Clips geprüft, {match_count:_} Treffer gefunden.".replace("_", "."),
-        }
+        return matches, progress, None
 
     except Exception as exc:
-        yield {
-            "type": "error",
-            "message": f"Unhandled error in searcher: {exc}",
-            "traceback": traceback.format_exc(),
-        }
+        error = f"Unhandled error in searcher: {exc}\n{traceback.format_exc()}"
+        return matches, progress, error
 
+
+
+
+######################## SAMPLE IMPLEMENTATION ###############################
 
 # --------- CONFIG ---------
-datasource  = "csv"     # "api"
-mode        = "real"    # "test 0 100"
+metadata_source = "csv"     # "api"
 cred_path = Path(__file__).parent / "cred.env"
-
+offset = 0
+limit = False
 
 # --------- SEARCHES ---------
 searches = [
@@ -296,39 +343,28 @@ searches = [
 if __name__ == "__main__":
     tb_write_log(main_log, f"{app_name} {app_version} started.")
 
+    def print_progress(message: str) -> None:
+        print(f"\r{message:<60}", end="", flush=True)
+
+    link(metadata_source, cred_path, offset=offset, limit=limit, on_progress=print_progress)
+
     for search in searches:
+        match, progress, error = find(search)
+        print()
+
+        if error:
+            print(error)
+            tb_write_log(main_log, error)
+            continue
+
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         result_csv = tb_make_path(Path(__file__).parent, "searches", search["name"], f"result_{timestamp}.csv")
 
         with open(result_csv, "w", newline="", encoding="utf-8-sig") as csvfile:
             writer = csv.writer(csvfile)
             writer.writerow(search["return_fields"])
+            writer.writerows(match)
 
-            progress_open = False
+        print(progress)
+        tb_write_log(main_log, progress)
 
-            for event in searcher(cred_path, datasource, search, mode):
-                if event["type"] == "progress":
-                    print(f"\r{event['message']:<60}", end="", flush=True)
-                    progress_open = True
-                    continue
-
-                if event["type"] == "match":
-                    writer.writerow(event["message"])
-                    continue
-
-                if progress_open:
-                    print()
-                    progress_open = False
-
-                if event["type"] == "start":
-                    print(event["message"])
-                    tb_write_log(main_log, event["message"])
-
-                elif event["type"] == "end":
-                    print(event["message"])
-                    tb_write_log(main_log, event["message"])
-
-                elif event["type"] == "error":
-                    print(event["message"])
-                    tb_write_log(main_log, event["message"])
-                    tb_write_log(main_log, event["traceback"])
