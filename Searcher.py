@@ -2,7 +2,7 @@
 from toolbox import tb_link_api, tb_write_log, tb_make_path
 import traceback
 import json
-from typing import Any, Dict, Iterator, List, Optional 
+from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
 import datetime
 import csv
 from dotenv import load_dotenv
@@ -13,7 +13,7 @@ import subprocess
 
 # --------- STATIC ---------
 app_name = "Searcher"
-app_version = "0.5"
+app_version = "0.6"
 main_log = Path(__file__).parent / "searcher.log"
 
 cred_path = Path(__file__).parent / "cred.env"
@@ -288,13 +288,11 @@ mode = "real"
 # --------- SEARCHES ---------
 searches = [
     {
-        "name": "Drone",
+        "name": "LTO Content",
         "request_fields": (
-            ("has_video", "is", "true"),
-            "and",
-            ("userpath", "contains", ("Drone", "Drohne", "DJI")),
+            ("display_backups", "is", "LS1901L7"),
         ),
-        "return_fields": ("clip_id", "media_space_name", "display_name", "hash", "timecode_start", "timecode_end", "userpath"),
+        "return_fields": ("clip_id", "media_space_name", "display_name", "hash", "userpath", "display_backups"),
     }
 ]
 
