@@ -15,12 +15,8 @@ import subprocess
 app_name = "Searcher"
 app_version = "0.6"
 main_log = Path(__file__).parent / "searcher.log"
-
-cred_path = Path(__file__).parent / "cred.env"
-
 csv_path = Path("SMB File Exchange") / "CSV"
 csv_file = "all_clips_all_metadata.csv"
-
 
 # --------- CLASS ---------
 class CsvMetadataSource:
@@ -56,7 +52,7 @@ class CsvMetadataSource:
 
 
 # --------- FUNC ---------
-def link_csv_file(fields) -> CsvMetadataSource:
+def link_csv_file(cred_path, fields) -> CsvMetadataSource:
     load_dotenv(cred_path, override=True)
     host = os.environ.get("CSV_HOST")
     user = os.environ.get("CSV_USER")
@@ -204,7 +200,7 @@ def eval_requests(metadata: dict, requests: tuple) -> bool:
 
 
 # --------- MAIN ---------
-def searcher(datasource: str = None, search: dict = None, mode: str = "test 0 10") -> Iterator[Dict[str, object]]:
+def searcher(cred_path: Path, datasource: str = None, search: dict = None, mode: str = None) -> Iterator[Dict[str, object]]:
     try:
         mode_parts = mode.split()
         if mode_parts[0] == "real":
@@ -223,7 +219,7 @@ def searcher(datasource: str = None, search: dict = None, mode: str = "test 0 10
         yield {"type": "progress", "message": f"Datenquelle '{datasource}' wird verbunden"}
 
         if datasource == "api":
-            metadata_source = tb_link_api("metadata")
+            metadata_source = tb_link_api(cred_path, "metadata")
             limit = test_mode_limit if test_mode else metadata_source.numClips()
             clip_ids = metadata_source.clips(offset=offset, limit=limit)
             clip_stream = (metadata_source.getClip(clip_id) for clip_id in clip_ids)
@@ -231,7 +227,7 @@ def searcher(datasource: str = None, search: dict = None, mode: str = "test 0 10
             step = 1
 
         elif datasource == "csv":
-            metadata_source = link_csv_file(fields)
+            metadata_source = link_csv_file(cred_path, fields)
             limit = test_mode_limit if test_mode else None
             clip_stream = metadata_source.iter_clips(offset=offset, limit=limit)
             total = limit
@@ -280,10 +276,10 @@ def searcher(datasource: str = None, search: dict = None, mode: str = "test 0 10
 
 
 # --------- CONFIG ---------
-#datasource = "api"
-datasource = "csv"
-#mode = "test 0 10000"
-mode = "real"
+datasource  = "csv"     # "api"
+mode        = "real"    # "test 0 100"
+cred_path = Path(__file__).parent / "cred.env"
+
 
 # --------- SEARCHES ---------
 searches = [
@@ -310,7 +306,7 @@ if __name__ == "__main__":
 
             progress_open = False
 
-            for event in searcher(datasource, search, mode):
+            for event in searcher(cred_path, datasource, search, mode):
                 if event["type"] == "progress":
                     print(f"\r{event['message']:<60}", end="", flush=True)
                     progress_open = True
