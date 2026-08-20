@@ -321,7 +321,8 @@ def find(search: dict = None, offset: Union[int, bool, None] = None,
 
 
 
-######################## SAMPLE IMPLEMENTATION ###############################
+
+
 
 # --------- CONFIG ---------
 metadata_source = "csv"     # "api"
@@ -368,4 +369,3 @@ if __name__ == "__main__":
 
         print(progress)
         tb_write_log(main_log, progress)
-
