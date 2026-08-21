@@ -15,10 +15,10 @@ Danach den Searcher installieren:
 
 ```bash
 # nur CSV
-pip install "searcher @ git+https://github.com/PROGRESS-MAM/ES-Searcher.git@main"
+pip install "searcher @ git+https://github.com/PROGRESS-MAM/ES-Search.git@main"
 
 # mit API
-pip install "searcher[api] @ git+https://github.com/PROGRESS-MAM/ES-Searcher.git@main"
+pip install "searcher[api] @ git+https://github.com/PROGRESS-MAM/ES-Search.git@main"
 ```
 
 Zur Entwicklung am Searcher selbst im Repo-Wurzelverzeichnis:
