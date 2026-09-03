@@ -2,65 +2,297 @@
 import traceback
 import json
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
-import csv
 from dotenv import load_dotenv
 from pathlib import Path
 import os
 import subprocess
+import pyarrow as pa
+import pyarrow.compute as pc
+import pyarrow.parquet as pq
 
 
 # --------- STATIC ---------
 app_name = "Searcher"
-app_version = "0.6"
+app_version = "1.0"
 
-csv_path = Path("SMB File Exchange") / "CSV"      # Share-Pfad ab Host, ohne Dateiname
-csv_file = "all_clips_all_metadata.csv"
+share_path = Path("SMB File Exchange") / "MMetadata_File"
+metadata_file = "all_clips_all_metadata.parquet"
+
+# Arrow vergleicht nur nach Kleinschreibung, eval_request_item nach casefold. Bei diesen
+# Zeichen fallen beide auseinander ("strasse" trifft "Straße" nur per casefold), darum
+# sind Zeilen mit solchen Zeichen im Vorfilter immer Kandidaten.
+casefold_risk_ranges = (
+    "00b5", "00df", "0149", "017f", "01f0", "0345", "0390", "03b0", "03c2",
+    "03d0-03d1", "03d5-03d6", "03f0-03f1", "03f5", "0587", "13a0-13f5",
+    "13f8-13fd", "1c80-1c88", "1e96-1e9b", "1e9e", "1f50", "1f52", "1f54",
+    "1f56", "1f80-1faf", "1fb2-1fb4", "1fb6-1fb7", "1fbc", "1fbe",
+    "1fc2-1fc4", "1fc6-1fc7", "1fcc", "1fd2-1fd3", "1fd6-1fd7", "1fe2-1fe4",
+    "1fe6-1fe7", "1ff2-1ff4", "1ff6-1ff7", "1ffc", "ab70-abbf", "fb00-fb06",
+    "fb13-fb17",
+)
+
+casefold_risk_pattern = "[" + "".join(
+    "-".join(chr(int(code, 16)) for code in item.split("-"))
+    for item in casefold_risk_ranges) + "]"
 
 
 # --------- STATE ---------
 link_state: Dict[str, Any] = {
-    "metadata_source": None,    # "api" oder "csv"
+    "metadata_source": None,    # "api" oder "parquet"
     "cred_path": None,          # vom Caller uebergeben
     "api_link": None,           # Callable des Callers, liefert die API-Instanz
     "offset": 0,                # Zahl oder False
     "limit": False,             # Zahl oder False (= alle Clips / Rows)
     "on_progress": None,        # optionaler Callback(str)
     "api": None,                # verbundene API-Instanz
-    "csv_full_path": None,      # gemounteter CSV-Pfad
+    "parquet_full_path": None,  # gemounteter Parquet-Pfad
 }
 
 
 # --------- CLASS ---------
-class CsvMetadataSource:
-    ENCODING = "utf-8-sig"
-    DELIMITER = ","
-    BUFFER = 4 * 1024 * 1024
+def collect_leaves(metadata_file) -> List[Dict[str, Any]]:
+    """Alle Blattspalten mit logischem und physischem Pfad.
 
-    def __init__(self, csv_path, fields) -> None:
-        self.csv_path = str(csv_path)
-        with self._open() as csvfile:
-            header = next(csv.reader(csvfile, delimiter=self.DELIMITER))
-        self.columns = {
-            field: [index for index, name in enumerate(header)
-                    if name.casefold() == field.casefold()
-                    or ("." not in field and name.rsplit(".", 1)[-1].casefold() == field.casefold())]
-            for field in fields
-        }
+    logical ist der Pfad ohne die technischen Listenebenen (audio.file.file.hash).
+    physical kommt aus der Datei selbst, damit die Spaltenauswahl unabhaengig davon
+    stimmt, wie der Schreiber die Listenebenen benannt hat (list.element oder list.item).
+    """
+    logical_paths: List[List[str]] = []
+    steps_per_leaf: List[list] = []
 
-    def _open(self):
-        return open(self.csv_path, "r", newline="", encoding=self.ENCODING, buffering=self.BUFFER)
+    def walk(name, arrow_type, logical, steps):
+        logical = logical + [name]
+        while pa.types.is_list(arrow_type) or pa.types.is_large_list(arrow_type):
+            steps = steps + [("list", None)]
+            arrow_type = arrow_type.value_type
+        if pa.types.is_struct(arrow_type):
+            for child in arrow_type:
+                walk(child.name, child.type, logical, steps + [("field", child.name)])
+            return
+        logical_paths.append(logical)
+        steps_per_leaf.append(steps)
+
+    for field in metadata_file.schema_arrow:
+        walk(field.name, field.type, [], [])
+
+    physical_paths = [metadata_file.schema.column(index).path
+                      for index in range(len(metadata_file.schema))]
+
+    if len(physical_paths) != len(logical_paths):
+        raise RuntimeError(f"Schema passt nicht zur Datei: {len(logical_paths)} Blaetter im "
+                           f"Schema, {len(physical_paths)} Spalten in der Datei")
+
+    return [{"logical": ".".join(logical), "physical": physical,
+             "top": logical[0], "steps": steps}
+            for logical, physical, steps in zip(logical_paths, physical_paths, steps_per_leaf)]
+
+
+def resolve_field(leaves, field: str) -> List[Dict[str, Any]]:
+    """Feldname auf Blattspalten abbilden, genau wie find_all_field_values aufloest:
+    ein Name mit Punkt ist der vollstaendige Pfad ab der Wurzel, ein Name ohne Punkt
+    trifft jedes Blatt mit diesem Namen.
+    """
+    wanted = field.casefold()
+    if "." in field:
+        return [leaf for leaf in leaves if leaf["logical"].casefold() == wanted]
+    return [leaf for leaf in leaves
+            if leaf["logical"].rsplit(".", 1)[-1].casefold() == wanted]
+
+
+def single_array(column):
+    chunks = column.chunks
+    if len(chunks) == 1:
+        return chunks[0]
+    if not chunks:
+        return pa.array([], type=column.type)
+    return pa.concat_arrays(chunks)
+
+
+def leaf_values(table, leaf):
+    """Blattwerte einer Blockgruppe flach, dazu die Zeilennummer je Wert."""
+    array = single_array(table.column(leaf["top"]))
+    parents = None
+    for kind, name in leaf["steps"]:
+        if kind == "list":
+            indices = pc.list_parent_indices(array)
+            array = pc.list_flatten(array)
+            parents = indices if parents is None else pc.take(parents, indices)
+        else:
+            array = pc.struct_field(array, [name])
+    return array, parents
+
+
+def rows_of_matches(values_mask, parents, row_index):
+    filled = pc.fill_null(values_mask, False)
+    if parents is None:
+        return filled
+    return pc.is_in(row_index, value_set=pc.cast(pc.filter(parents, filled), pa.int64()))
+
+
+def prefilter_item(table, leaves, operator, request_value, num_rows, row_index):
+    """Vektorisierter Vorfilter fuer eine Bedingung.
+
+    Rueckgabe None heisst: alle Zeilen sind Kandidaten. Der Vorfilter darf zu weit
+    sein, aber nie zu eng - entschieden wird ausschliesslich in eval_requests.
+    """
+    if not leaves:
+        return pa.array([False] * num_rows)
+    if operator not in ("is", "contains"):
+        return None
+
+    if isinstance(request_value, (list, tuple)):
+        needles = [str(item).casefold() for item in request_value]
+    else:
+        needles = [str(request_value).casefold()]
+
+    mask = None
+    for leaf in leaves:
+        array, parents = leaf_values(table, leaf)
+        if not (pa.types.is_string(array.type) or pa.types.is_large_string(array.type)):
+            return None
+        found = pc.match_substring_regex(array, casefold_risk_pattern)
+        for needle in needles:
+            found = pc.or_(found, pc.match_substring(array, needle, ignore_case=True))
+        rows = rows_of_matches(found, parents, row_index)
+        mask = rows if mask is None else pc.or_(mask, rows)
+    return mask
+
+
+def combine_masks(left, right, operator):
+    if operator == "and":
+        if left is None:
+            return right
+        if right is None:
+            return left
+        return pc.and_(left, right)
+    if operator == "or":
+        if left is None or right is None:
+            return None
+        return pc.or_(left, right)
+    return left
+
+
+def prefilter_mask(table, request_fields, resolved, num_rows, row_index):
+    """Kandidatenmaske einer Blockgruppe, in derselben Reihenfolge wie eval_requests."""
+    parts = []
+    for item in request_fields:
+        if isinstance(item, tuple):
+            field, operator, request_value = item
+            parts.append(prefilter_item(table, resolved.get(field, []), operator,
+                                        request_value, num_rows, row_index))
+        elif isinstance(item, str):
+            parts.append(item)
+
+    if not parts:
+        return None
+
+    mask = None if isinstance(parts[0], str) else parts[0]
+    index = 1
+    while index < len(parts):
+        operator = parts[index]
+        following = parts[index + 1] if index + 1 < len(parts) else None
+        if isinstance(following, str):
+            following = None
+        mask = combine_masks(mask, following, operator)
+        index += 2
+
+    return mask
+
+
+def drop_empty(value):
+    """Leere Werte entfernen, damit fehlende Felder als nicht vorhanden gelten."""
+    if isinstance(value, dict):
+        cleaned = {}
+        for key, item in value.items():
+            item = drop_empty(item)
+            if item not in (None, "", [], {}):
+                cleaned[key] = item
+        return cleaned
+    if isinstance(value, list):
+        cleaned = []
+        for item in value:
+            item = drop_empty(item)
+            if item not in (None, "", [], {}):
+                cleaned.append(item)
+        return cleaned
+    return value
+
+
+class ParquetMetadataSource:
+    def __init__(self, parquet_path, fields, request_fields) -> None:
+        self.file = pq.ParquetFile(str(parquet_path))
+        self.request_fields = request_fields
+        self.leaves = collect_leaves(self.file)
+        self.resolved = {field: resolve_field(self.leaves, field) for field in fields}
+        self.conditions = [item for item in request_fields if isinstance(item, tuple)]
+        self.request_columns = self.columns_for([item[0] for item in self.conditions])
+        self.value_columns = self.columns_for(fields)
+        self.num_rows = self.file.metadata.num_rows
+        self.num_row_groups = self.file.num_row_groups
+        self.rows_scanned = 0
+        self.candidates = 0
+        self.use_prefilter = True
+        self.impossible = bool(self.conditions) and all(
+            not self.resolved.get(item[0]) for item in self.conditions)
+
+    def columns_for(self, field_names) -> List[str]:
+        columns: List[str] = []
+        for field in field_names:
+            for leaf in self.resolved.get(field, []):
+                if leaf["physical"] not in columns:
+                    columns.append(leaf["physical"])
+        return columns
 
     def iter_clips(self, offset: int = 0, limit: Optional[int] = None) -> Iterator[Dict[str, Any]]:
-        with self._open() as csvfile:
-            reader = csv.reader(csvfile, delimiter=self.DELIMITER)
-            next(reader)
-            for index, row in enumerate(reader):
-                if index < offset:
-                    continue
-                if limit is not None and index >= offset + limit:
-                    return
-                yield {field: [row[i] for i in columns if row[i]]
-                       for field, columns in self.columns.items()}
+        if self.impossible:
+            report_progress("Kein Feld der Suche kommt in der Datei vor, keine Treffer moeglich")
+            return
+
+        stop = self.num_rows if limit is None else min(self.num_rows, offset + limit)
+        first_row = 0
+
+        for group in range(self.num_row_groups):
+            group_rows = self.file.metadata.row_group(group).num_rows
+            last_row = first_row + group_rows
+
+            if last_row <= offset or first_row >= stop:
+                first_row = last_row
+                continue
+
+            lower = max(0, offset - first_row)
+            upper = min(group_rows, stop - first_row)
+            self.rows_scanned += upper - lower
+
+            row_index = pa.array(range(group_rows), type=pa.int64())
+            table = None
+            mask = None
+
+            if self.use_prefilter and self.request_columns:
+                table = self.file.read_row_group(group, columns=self.request_columns)
+                mask = prefilter_mask(table, self.request_fields, self.resolved,
+                                      group_rows, row_index)
+
+            if lower > 0 or upper < group_rows:
+                in_range = pa.array([lower <= row < upper for row in range(group_rows)])
+                mask = in_range if mask is None else pc.and_(mask, in_range)
+
+            indices = row_index if mask is None else pc.indices_nonzero(mask)
+            self.candidates += len(indices)
+
+            report_progress(
+                f"Blockgruppe {group + 1} von {self.num_row_groups}, "
+                f"{self.rows_scanned:_} Clips vorgefiltert, "
+                f"{self.candidates:_} Kandidaten".replace("_", "."))
+
+            if len(indices):
+                if table is not None and self.value_columns == self.request_columns:
+                    values = table
+                else:
+                    values = self.file.read_row_group(group, columns=self.value_columns)
+                for row in values.take(indices).to_pylist():
+                    yield drop_empty(row)
+
+            first_row = last_row
 
 
 # --------- FUNC ---------
@@ -76,7 +308,7 @@ def report_progress(message: str) -> None:
         callback(message)
 
 
-def mount_csv_share() -> Path:
+def mount_share() -> Path:
     cred_path = link_state.get("cred_path")
     if not cred_path:
         raise RuntimeError("Kein cred_path gesetzt, bitte searcher.link(...) aufrufen.")
@@ -91,7 +323,7 @@ def mount_csv_share() -> Path:
     if not host:
         raise RuntimeError(f"CSV_HOST fehlt in '{cred_path}'.")
 
-    full_path = Path("\\\\" + "\\".join((host, *csv_path.parts, csv_file)))
+    full_path = Path("\\\\" + "\\".join((host, *share_path.parts, metadata_file)))
 
     if user:
         share = f"\\\\{host}\\IPC$"
@@ -150,9 +382,9 @@ def find_all_field_values(metadata: Any, field: str) -> List[Any]:
 
     if "." in field:
         if isinstance(metadata, dict) and field in metadata:
-            collect(metadata[field])                    # flache CSV-Zeile
+            collect(metadata[field])                    # Pfad direkt vorhanden
         else:
-            walk(metadata, tuple(field.split(".")))     # verschachtelte API-Daten
+            walk(metadata, tuple(field.split(".")))     # verschachtelte Struktur
     else:
         recurse(metadata)
 
@@ -236,18 +468,21 @@ def eval_requests(metadata: dict, requests: tuple) -> bool:
 
 
 # --------- MAIN ---------
-def link(metadata_source: str = "csv", cred_path: Union[str, Path] = None,
+def link(metadata_source: str = "parquet", cred_path: Union[str, Path] = None,
          offset: Union[int, bool] = 0, limit: Union[int, bool] = False,
          on_progress: Optional[Callable[[str], None]] = None,
          api_link: Optional[Callable[[], Any]] = None) -> None:
 
-    """Verbindet die Datenquelle. Den CSV-Pfad kennt das Modul selbst,
+    """Verbindet die Datenquelle. Den Pfad kennt das Modul selbst,
     offset / limit sind eine Zahl oder False (= alles).
     Fuer metadata_source 'api' liefert der Caller api_link mit z.B.
-    lambda: tb_link_api(cred_path, "metadata")."""
+    lambda: tb_link_api(cred_path, 'metadata')."""
 
-    if metadata_source not in ("api", "csv"):
-        raise ValueError(f"Unbekannte Datenquelle '{metadata_source}', erlaubt: 'api', 'csv'.")
+    if metadata_source == "csv":
+        raise ValueError("Die CSV-Quelle gibt es ab Version 1.0 nicht mehr, "
+                         "bitte 'parquet' verwenden.")
+    if metadata_source not in ("api", "parquet"):
+        raise ValueError(f"Unbekannte Datenquelle '{metadata_source}', erlaubt: 'api', 'parquet'.")
 
     link_state["metadata_source"] = metadata_source
     link_state["cred_path"] = Path(cred_path) if cred_path else None
@@ -256,17 +491,17 @@ def link(metadata_source: str = "csv", cred_path: Union[str, Path] = None,
     link_state["limit"] = limit
     link_state["on_progress"] = on_progress
     link_state["api"] = None
-    link_state["csv_full_path"] = None
+    link_state["parquet_full_path"] = None
 
     report_progress(f"Datenquelle '{metadata_source}' wird verbunden")
 
     if metadata_source == "api":
         if not callable(api_link):
             raise ValueError("Fuer die Datenquelle 'api' wird api_link benoetigt, "
-                             "z.B. api_link=lambda: tb_link_api(cred_path, \"metadata\").")
+                             "z.B. api_link=lambda: tb_link_api(cred_path, 'metadata').")
         link_state["api"] = api_link()
     else:
-        link_state["csv_full_path"] = mount_csv_share()
+        link_state["parquet_full_path"] = mount_share()
 
 
 def find(search: dict = None, offset: Union[int, bool, None] = None,
@@ -291,6 +526,8 @@ def find(search: dict = None, offset: Union[int, bool, None] = None,
             + list(search.get("return_fields", []))
         ))
 
+        source = None
+
         if metadata_source == "api":
             api = link_state["api"]
             api_limit = limit_value if limit_value is not None else api.numClips()
@@ -300,16 +537,17 @@ def find(search: dict = None, offset: Union[int, bool, None] = None,
             step = 1
 
         else:
-            csv_source = CsvMetadataSource(link_state["csv_full_path"], fields)
-            clip_stream = csv_source.iter_clips(offset=offset_value, limit=limit_value)
-            total = limit_value
-            step = 1000
+            source = ParquetMetadataSource(link_state["parquet_full_path"], fields,
+                                           search["request_fields"])
+            clip_stream = source.iter_clips(offset=offset_value, limit=limit_value)
+            total = None
+            step = 0
 
         clip_index = 0
         report_progress(f"Suche '{search.get('name', '')}' gestartet")
 
         for clip_index, clip_all_metadata in enumerate(clip_stream, start=1):
-            if clip_index == 1 or clip_index % step == 0:
+            if step and (clip_index == 1 or clip_index % step == 0):
                 if total:
                     message = f"Clip {clip_index:_} von {total:_}, {len(matches):_} Treffer".replace("_", ".")
                 else:
@@ -323,7 +561,9 @@ def find(search: dict = None, offset: Union[int, bool, None] = None,
                     return_row.append("; ".join(str(value) for value in return_values))
                 matches.append(return_row)
 
-        progress = (f"Suche '{search.get('name', '')}' beendet, {clip_index:_} Clips geprueft, "
+        checked = source.rows_scanned if source is not None else clip_index
+
+        progress = (f"Suche '{search.get('name', '')}' beendet, {checked:_} Clips geprueft, "
                     f"{len(matches):_} Treffer gefunden.").replace("_", ".")
         report_progress(progress)
 
