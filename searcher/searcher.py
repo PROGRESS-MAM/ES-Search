@@ -15,8 +15,17 @@ import pyarrow.parquet as pq
 app_name = "Searcher"
 app_version = "1.0"
 
-share_path = Path("SMB File Exchange") / "MMetadata_File"
+share_path = Path("SMB File Exchange") / "Metadata_File"
 metadata_file = "all_clips_all_metadata.parquet"
+
+
+#besser:
+'''
+. Gefaltet schreiben statt zur Laufzeit falten — der eigentlich leichte Weg. Im Dumper pro Zeile alle String-Blätter
+casefold()-en und mit \n zu einer Suchspalte verketten. Der Vorfilter ist dann ein einziges pc.match_substring(blob, needle) ohne ignore_case,
+ohne Risikoliste, ohne Leaf-Walk — und semantisch identisch zu eval_requests. Für feldbezogene Bedingungen ist er breiter
+ (Treffer könnte aus einem anderen Feld kommen), das ist erlaubt, solange nur eine Übermenge entsteht. Kostet Speicherplatz und einen Re-Dump.
+
 
 # Arrow vergleicht nur nach Kleinschreibung, eval_request_item nach casefold. Bei diesen
 # Zeichen fallen beide auseinander ("strasse" trifft "Straße" nur per casefold), darum
@@ -35,21 +44,23 @@ casefold_risk_pattern = "[" + "".join(
     "-".join(chr(int(code, 16)) for code in item.split("-"))
     for item in casefold_risk_ranges) + "]"
 
+'''
+    
 
 # --------- STATE ---------
 link_state: Dict[str, Any] = {
-    "metadata_source": None,    # "api" oder "parquet"
+    "metadata_source": None,    # "api" oder "file"
     "cred_path": None,          # vom Caller uebergeben
     "api_link": None,           # Callable des Callers, liefert die API-Instanz
     "offset": 0,                # Zahl oder False
     "limit": False,             # Zahl oder False (= alle Clips / Rows)
     "on_progress": None,        # optionaler Callback(str)
     "api": None,                # verbundene API-Instanz
-    "parquet_full_path": None,  # gemounteter Parquet-Pfad
+    "file_full_path": None,     # gemounteter File-Pfad
 }
 
 
-# --------- CLASS ---------
+# --------- FUNC PARQUET ---------
 def collect_leaves(metadata_file) -> List[Dict[str, Any]]:
     """Alle Blattspalten mit logischem und physischem Pfad.
 
@@ -150,7 +161,7 @@ def prefilter_item(table, leaves, operator, request_value, num_rows, row_index):
         array, parents = leaf_values(table, leaf)
         if not (pa.types.is_string(array.type) or pa.types.is_large_string(array.type)):
             return None
-        found = pc.match_substring_regex(array, casefold_risk_pattern)
+        found = pc.match_substring_regex(array, casefold_risk_pattern)  ## to be changed
         for needle in needles:
             found = pc.or_(found, pc.match_substring(array, needle, ignore_case=True))
         rows = rows_of_matches(found, parents, row_index)
@@ -295,7 +306,7 @@ class ParquetMetadataSource:
             first_row = last_row
 
 
-# --------- FUNC ---------
+# --------- FUNC SEARCH ---------
 def normalize_range(value: Union[int, bool, None], default: Optional[int]) -> Optional[int]:
     if value is False or value is None:
         return default
@@ -398,6 +409,8 @@ def eval_request_item(metadata: dict, request_item: tuple) -> bool:
     if not actual_values:
         return False
 
+# logik für not -> return rumdrehen?
+
     if request_operator == "is":
         for value in actual_values:
             if str(value).casefold() == str(request_value).casefold():
@@ -468,7 +481,7 @@ def eval_requests(metadata: dict, requests: tuple) -> bool:
 
 
 # --------- MAIN ---------
-def link(metadata_source: str = "parquet", cred_path: Union[str, Path] = None,
+def link(metadata_source: str = "file", cred_path: Union[str, Path] = None,
          offset: Union[int, bool] = 0, limit: Union[int, bool] = False,
          on_progress: Optional[Callable[[str], None]] = None,
          api_link: Optional[Callable[[], Any]] = None) -> None:
@@ -478,11 +491,8 @@ def link(metadata_source: str = "parquet", cred_path: Union[str, Path] = None,
     Fuer metadata_source 'api' liefert der Caller api_link mit z.B.
     lambda: tb_link_api(cred_path, 'metadata')."""
 
-    if metadata_source == "csv":
-        raise ValueError("Die CSV-Quelle gibt es ab Version 1.0 nicht mehr, "
-                         "bitte 'parquet' verwenden.")
-    if metadata_source not in ("api", "parquet"):
-        raise ValueError(f"Unbekannte Datenquelle '{metadata_source}', erlaubt: 'api', 'parquet'.")
+    if metadata_source not in ("api", "file"):
+        raise ValueError(f"Unbekannte Datenquelle '{metadata_source}', erlaubt: 'api', 'file'.")
 
     link_state["metadata_source"] = metadata_source
     link_state["cred_path"] = Path(cred_path) if cred_path else None
@@ -491,7 +501,7 @@ def link(metadata_source: str = "parquet", cred_path: Union[str, Path] = None,
     link_state["limit"] = limit
     link_state["on_progress"] = on_progress
     link_state["api"] = None
-    link_state["parquet_full_path"] = None
+    link_state["file_full_path"] = None
 
     report_progress(f"Datenquelle '{metadata_source}' wird verbunden")
 
@@ -501,7 +511,7 @@ def link(metadata_source: str = "parquet", cred_path: Union[str, Path] = None,
                              "z.B. api_link=lambda: tb_link_api(cred_path, 'metadata').")
         link_state["api"] = api_link()
     else:
-        link_state["parquet_full_path"] = mount_share()
+        link_state["file_full_path"] = mount_share()
 
 
 def find(search: dict = None, offset: Union[int, bool, None] = None,
@@ -537,7 +547,7 @@ def find(search: dict = None, offset: Union[int, bool, None] = None,
             step = 1
 
         else:
-            source = ParquetMetadataSource(link_state["parquet_full_path"], fields,
+            source = ParquetMetadataSource(link_state["file_full_path"], fields,
                                            search["request_fields"])
             clip_stream = source.iter_clips(offset=offset_value, limit=limit_value)
             total = None
