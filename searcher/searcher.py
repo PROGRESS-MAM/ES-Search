@@ -16,25 +16,16 @@ app_name = "Searcher"
 app_version = "1.0"
 
 share_path = Path("SMB File Exchange") / "Metadata_File"
-metadata_file = "all_clips_all_metadata.parquet"
+file_name = "all_clips_all_metadata.parquet"
 
+# Elternfeld der umbenannten Custom-Metadaten, siehe resolve_field
+custom_field_parent = "custom_metadata"
 
-# Arrow vergleicht nur nach Kleinschreibung, eval_request_item nach casefold. Bei diesen
-# Zeichen fallen beide auseinander ("strasse" trifft "Straße" nur per casefold), darum
+# Arrow vergleicht nur nach Kleinschreibung, eval_request_item nach casefold, darum
 # sind Zeilen mit solchen Zeichen im Vorfilter immer Kandidaten.
-casefold_risk_ranges = (
-    "00b5", "00df", "0149", "017f", "01f0", "0345", "0390", "03b0", "03c2",
-    "03d0-03d1", "03d5-03d6", "03f0-03f1", "03f5", "0587", "13a0-13f5",
-    "13f8-13fd", "1c80-1c88", "1e96-1e9b", "1e9e", "1f50", "1f52", "1f54",
-    "1f56", "1f80-1faf", "1fb2-1fb4", "1fb6-1fb7", "1fbc", "1fbe",
-    "1fc2-1fc4", "1fc6-1fc7", "1fcc", "1fd2-1fd3", "1fd6-1fd7", "1fe2-1fe4",
-    "1fe6-1fe7", "1ff2-1ff4", "1ff6-1ff7", "1ffc", "ab70-abbf", "fb00-fb06",
-    "fb13-fb17",
-)
-
 casefold_risk_pattern = "[" + "".join(
-    "-".join(chr(int(code, 16)) for code in item.split("-"))
-    for item in casefold_risk_ranges) + "]"
+    chr(code) for code in range(0x80, 0x110000)
+    if chr(code).casefold() != chr(code).lower()) + "]"
 
 
 # --------- STATE ---------
@@ -50,186 +41,67 @@ link_state: Dict[str, Any] = {
 }
 
 
-# --------- FUNC PARQUET ---------
-def collect_leaves(metadata_file) -> List[Dict[str, Any]]:
-    """Alle Blattspalten mit logischem und physischem Pfad.
+# --------- FUNC LOGIC ---------
+negation_operators = {
+    "is not": "is",
+    "contains not": "contains",
+    "not >": ">",
+    "not <": "<",
+    "not >=": ">=",
+    "not <=": "<=",
+}
 
-    logical ist der Pfad ohne die technischen Listenebenen (audio.file.file.hash).
-    physical kommt aus der Datei selbst, damit die Spaltenauswahl unabhaengig davon
-    stimmt, wie der Schreiber die Listenebenen benannt hat (list.element oder list.item).
+bool_logic = {
+    "and": lambda left, right: left and right,
+    "or": lambda left, right: left or right,
+}
+
+
+def split_negation(operator: str):
+    """Operator und Negation trennen: "is not" wird zu ("is", True)."""
+    core = negation_operators.get(operator)
+    if core is None:
+        return operator, False
+    return core, True
+
+
+def fold_logic(parts: list, operations: dict):
+    """Bedingungen und Verknüpfungen strikt von links nach rechts zusammenfassen.
+
+    parts wechselt zwischen Bedingung und Verknüpfung: [wert, "and", wert, ...].
     """
-    logical_paths: List[List[str]] = []
-    steps_per_leaf: List[list] = []
-
-    def walk(name, arrow_type, logical, steps):
-        logical = logical + [name]
-        while pa.types.is_list(arrow_type) or pa.types.is_large_list(arrow_type):
-            steps = steps + [("list", None)]
-            arrow_type = arrow_type.value_type
-        if pa.types.is_struct(arrow_type):
-            for child in arrow_type:
-                walk(child.name, child.type, logical, steps + [("field", child.name)])
-            return
-        logical_paths.append(logical)
-        steps_per_leaf.append(steps)
-
-    for field in metadata_file.schema_arrow:
-        walk(field.name, field.type, [], [])
-
-    physical_paths = [metadata_file.schema.column(index).path
-                      for index in range(len(metadata_file.schema))]
-
-    if len(physical_paths) != len(logical_paths):
-        raise RuntimeError(f"Schema passt nicht zur Datei: {len(logical_paths)} Blaetter im "
-                           f"Schema, {len(physical_paths)} Spalten in der Datei")
-
-    return [{"logical": ".".join(logical), "physical": physical,
-             "top": logical[0], "steps": steps}
-            for logical, physical, steps in zip(logical_paths, physical_paths, steps_per_leaf)]
-
-
-def resolve_field(leaves, field: str) -> List[Dict[str, Any]]:
-    """Feldname auf Blattspalten abbilden, genau wie find_all_field_values aufloest:
-    ein Name mit Punkt ist der vollstaendige Pfad ab der Wurzel, ein Name ohne Punkt
-    trifft jedes Blatt mit diesem Namen.
-    """
-    wanted = field.casefold()
-    if "." in field:
-        return [leaf for leaf in leaves if leaf["logical"].casefold() == wanted]
-    return [leaf for leaf in leaves
-            if leaf["logical"].rsplit(".", 1)[-1].casefold() == wanted]
-
-
-def single_array(column):
-    chunks = column.chunks
-    if len(chunks) == 1:
-        return chunks[0]
-    if not chunks:
-        return pa.array([], type=column.type)
-    return pa.concat_arrays(chunks)
-
-
-def leaf_values(table, leaf):
-    """Blattwerte einer Blockgruppe flach, dazu die Zeilennummer je Wert."""
-    array = single_array(table.column(leaf["top"]))
-    parents = None
-    for kind, name in leaf["steps"]:
-        if kind == "list":
-            indices = pc.list_parent_indices(array)
-            array = pc.list_flatten(array)
-            parents = indices if parents is None else pc.take(parents, indices)
-        else:
-            array = pc.struct_field(array, [name])
-    return array, parents
-
-
-def rows_of_matches(values_mask, parents, row_index):
-    filled = pc.fill_null(values_mask, False)
-    if parents is None:
-        return filled
-    return pc.is_in(row_index, value_set=pc.cast(pc.filter(parents, filled), pa.int64()))
-
-
-def prefilter_item(table, leaves, operator, request_value, num_rows, row_index):
-    """Vektorisierter Vorfilter fuer eine Bedingung.
-
-    Rueckgabe None heisst: alle Zeilen sind Kandidaten. Der Vorfilter darf zu weit
-    sein, aber nie zu eng - entschieden wird ausschliesslich in eval_requests.
-    """
-    if not leaves:
-        return pa.array([False] * num_rows)
-    if operator not in ("is", "contains"):
-        return None
-
-    if isinstance(request_value, (list, tuple)):
-        needles = [str(item).casefold() for item in request_value]
-    else:
-        needles = [str(request_value).casefold()]
-
-    mask = None
-    for leaf in leaves:
-        array, parents = leaf_values(table, leaf)
-        if not (pa.types.is_string(array.type) or pa.types.is_large_string(array.type)):
-            return None
-        found = pc.match_substring_regex(array, casefold_risk_pattern)  ## to be changed
-        for needle in needles:
-            found = pc.or_(found, pc.match_substring(array, needle, ignore_case=True))
-        rows = rows_of_matches(found, parents, row_index)
-        mask = rows if mask is None else pc.or_(mask, rows)
-    return mask
-
-
-def combine_masks(left, right, operator):
-    if operator == "and":
-        if left is None:
-            return right
-        if right is None:
-            return left
-        return pc.and_(left, right)
-    if operator == "or":
-        if left is None or right is None:
-            return None
-        return pc.or_(left, right)
-    return left
-
-
-def prefilter_mask(table, request_fields, resolved, num_rows, row_index):
-    """Kandidatenmaske einer Blockgruppe, in derselben Reihenfolge wie eval_requests."""
-    parts = []
-    for item in request_fields:
-        if isinstance(item, tuple):
-            field, operator, request_value = item
-            parts.append(prefilter_item(table, resolved.get(field, []), operator,
-                                        request_value, num_rows, row_index))
-        elif isinstance(item, str):
-            parts.append(item)
-
     if not parts:
         return None
 
-    mask = None if isinstance(parts[0], str) else parts[0]
-    index = 1
-    while index < len(parts):
-        operator = parts[index]
-        following = parts[index + 1] if index + 1 < len(parts) else None
-        if isinstance(following, str):
-            following = None
-        mask = combine_masks(mask, following, operator)
-        index += 2
+    if len(parts) % 2 == 0:
+        raise ValueError("Der Suchausdruck endet mit einer Verknüpfung.")
 
-    return mask
+    for index, part in enumerate(parts):
+        is_operator = isinstance(part, str)
+        if index % 2 == 0 and is_operator:
+            raise ValueError(f"Bedingung erwartet, Verknüpfung '{part}' gefunden.")
+        if index % 2 == 1 and not (is_operator and part in operations):
+            raise ValueError(f"Verknüpfung 'and' oder 'or' erwartet, '{part}' gefunden.")
 
+    accumulated = parts[0]
+    for index in range(1, len(parts) - 1, 2):
+        accumulated = operations[parts[index]](accumulated, parts[index + 1])
 
-def drop_empty(value):
-    """Leere Werte entfernen, damit fehlende Felder als nicht vorhanden gelten."""
-    if isinstance(value, dict):
-        cleaned = {}
-        for key, item in value.items():
-            item = drop_empty(item)
-            if item not in (None, "", [], {}):
-                cleaned[key] = item
-        return cleaned
-    if isinstance(value, list):
-        cleaned = []
-        for item in value:
-            item = drop_empty(item)
-            if item not in (None, "", [], {}):
-                cleaned.append(item)
-        return cleaned
-    return value
+    return accumulated
 
 
+# --------- FUNC PARQUET ---------
 class ParquetMetadataSource:
     def __init__(self, parquet_path, fields, request_fields) -> None:
-        self.file = pq.ParquetFile(str(parquet_path))
+        self.parquet_file = pq.ParquetFile(str(parquet_path))
         self.request_fields = request_fields
-        self.leaves = collect_leaves(self.file)
+        self.leaves = collect_leaves(self.parquet_file)
         self.resolved = {field: resolve_field(self.leaves, field) for field in fields}
         self.conditions = [item for item in request_fields if isinstance(item, tuple)]
         self.request_columns = self.columns_for([item[0] for item in self.conditions])
         self.value_columns = self.columns_for(fields)
-        self.num_rows = self.file.metadata.num_rows
-        self.num_row_groups = self.file.num_row_groups
+        self.num_rows = self.parquet_file.metadata.num_rows
+        self.num_row_groups = self.parquet_file.num_row_groups
         self.rows_scanned = 0
         self.candidates = 0
         self.use_prefilter = True
@@ -253,7 +125,7 @@ class ParquetMetadataSource:
         first_row = 0
 
         for group in range(self.num_row_groups):
-            group_rows = self.file.metadata.row_group(group).num_rows
+            group_rows = self.parquet_file.metadata.row_group(group).num_rows
             last_row = first_row + group_rows
 
             if last_row <= offset or first_row >= stop:
@@ -269,7 +141,7 @@ class ParquetMetadataSource:
             mask = None
 
             if self.use_prefilter and self.request_columns:
-                table = self.file.read_row_group(group, columns=self.request_columns)
+                table = self.parquet_file.read_row_group(group, columns=self.request_columns)
                 mask = prefilter_mask(table, self.request_fields, self.resolved,
                                       group_rows, row_index)
 
@@ -289,11 +161,170 @@ class ParquetMetadataSource:
                 if table is not None and self.value_columns == self.request_columns:
                     values = table
                 else:
-                    values = self.file.read_row_group(group, columns=self.value_columns)
+                    values = self.parquet_file.read_row_group(group, columns=self.value_columns)
                 for row in values.take(indices).to_pylist():
                     yield drop_empty(row)
 
             first_row = last_row
+
+
+def collect_leaves(parquet_file) -> List[Dict[str, Any]]:
+    """Alle Blattspalten der Datei mit logischem Pfad, physischem Spaltennamen,
+    oberstem Feld und den Schritten dorthin."""
+    logical_paths: List[List[str]] = []
+    steps_per_leaf: List[list] = []
+
+    def walk(name, arrow_type, logical, steps):
+        logical = logical + [name]
+        while pa.types.is_list(arrow_type) or pa.types.is_large_list(arrow_type):
+            steps = steps + [("list", None)]
+            arrow_type = arrow_type.value_type
+        if pa.types.is_struct(arrow_type):
+            for child in arrow_type:
+                walk(child.name, child.type, logical, steps + [("field", child.name)])
+            return
+        logical_paths.append(logical)
+        steps_per_leaf.append(steps)
+
+    for field in parquet_file.schema_arrow:
+        walk(field.name, field.type, [], [])
+
+    physical_paths = [parquet_file.schema.column(index).path
+                      for index in range(len(parquet_file.schema))]
+
+    if len(physical_paths) != len(logical_paths):
+        raise RuntimeError(f"Schema passt nicht zur Datei: {len(logical_paths)} Blaetter im "
+                           f"Schema, {len(physical_paths)} Spalten in der Datei")
+
+    return [{"logical": ".".join(logical), "physical": physical,
+             "top": logical[0], "steps": steps}
+            for logical, physical, steps in zip(logical_paths, physical_paths, steps_per_leaf)]
+
+
+def resolve_field(leaves, field: str) -> List[Dict[str, Any]]:
+    """Feldname auf Blattspalten abbilden, genau wie find_all_field_values aufloest:
+    ein Name mit Punkt ist der vollstaendige Pfad ab der Wurzel, ein Name ohne Punkt
+    trifft jedes Blatt mit diesem Namen.
+    """
+    wanted = field.casefold()
+    if "." in field:
+        hits = [leaf for leaf in leaves if leaf["logical"].casefold() == wanted]
+        if hits:
+            return hits
+        # Custom-Feldnamen mit Punkt stehen mit Unterstrich unter custom_metadata
+        wanted = f"{custom_field_parent}.{field.replace('.', '_')}".casefold()
+        return [leaf for leaf in leaves if leaf["logical"].casefold() == wanted]
+    return [leaf for leaf in leaves
+            if leaf["logical"].rsplit(".", 1)[-1].casefold() == wanted]
+
+
+def leaf_values(table, leaf):
+    """Blattwerte einer Blockgruppe flach, dazu die Zeilennummer je Wert."""
+    array = single_array(table.column(leaf["top"]))
+    parents = None
+    for kind, name in leaf["steps"]:
+        if kind == "list":
+            indices = pc.list_parent_indices(array)
+            array = pc.list_flatten(array)
+            parents = indices if parents is None else pc.take(parents, indices)
+        else:
+            array = pc.struct_field(array, [name])
+    return array, parents
+
+
+def single_array(column):
+    chunks = column.chunks
+    if len(chunks) == 1:
+        return chunks[0]
+    if not chunks:
+        return pa.array([], type=column.type)
+    return pa.concat_arrays(chunks)
+
+
+def rows_of_matches(values_mask, parents, row_index):
+    filled = pc.fill_null(values_mask, False)
+    if parents is None:
+        return filled
+    return pc.is_in(row_index, value_set=pc.cast(pc.filter(parents, filled), pa.int64()))
+
+
+def prefilter_item(table, leaves, operator, request_value, num_rows, row_index):
+    """Vektorisierter Vorfilter fuer eine Bedingung.
+
+    Rueckgabe None heisst: alle Zeilen sind Kandidaten. Der Vorfilter darf zu weit
+    sein, aber nie zu eng - entschieden wird ausschliesslich in eval_requests.
+    """
+    if not leaves:
+        return pa.array([False] * num_rows)
+
+    operator, negated = split_negation(operator)
+    if negated or operator not in ("is", "contains"):
+        return None
+
+    if isinstance(request_value, (list, tuple)):
+        needles = [str(item).casefold() for item in request_value]
+    else:
+        needles = [str(request_value).casefold()]
+
+    mask = None
+    for leaf in leaves:
+        array, parents = leaf_values(table, leaf)
+        if not (pa.types.is_string(array.type) or pa.types.is_large_string(array.type)):
+            return None
+        found = pc.match_substring_regex(array, casefold_risk_pattern)
+        for needle in needles:
+            found = pc.or_(found, pc.match_substring(array, needle, ignore_case=True))
+        rows = rows_of_matches(found, parents, row_index)
+        mask = rows if mask is None else pc.or_(mask, rows)
+    return mask
+
+
+def prefilter_mask(table, request_fields, resolved, num_rows, row_index):
+    """Kandidatenmaske einer Blockgruppe, in derselben Reihenfolge wie eval_requests."""
+
+    def mask_and(left, right):
+        if left is None:
+            return right
+        if right is None:
+            return left
+        return pc.and_(left, right)
+
+    def mask_or(left, right):
+        if left is None or right is None:
+            return None
+        return pc.or_(left, right)
+
+    mask_logic = {"and": mask_and, "or": mask_or}
+
+    parts = []
+    for item in request_fields:
+        if isinstance(item, tuple):
+            field, operator, request_value = item
+            parts.append(prefilter_item(table, resolved.get(field, []), operator,
+                                        request_value, num_rows, row_index))
+        elif isinstance(item, str):
+            parts.append(item)
+
+    return fold_logic(parts, mask_logic)
+
+
+def drop_empty(value):
+    """Leere Werte entfernen, damit fehlende Felder als nicht vorhanden gelten."""
+    if isinstance(value, dict):
+        cleaned = {}
+        for key, item in value.items():
+            item = drop_empty(item)
+            if item not in (None, "", [], {}):
+                cleaned[key] = item
+        return cleaned
+    if isinstance(value, list):
+        cleaned = []
+        for item in value:
+            item = drop_empty(item)
+            if item not in (None, "", [], {}):
+                cleaned.append(item)
+        return cleaned
+    return value
 
 
 # --------- FUNC SEARCH ---------
@@ -317,14 +348,14 @@ def mount_share() -> Path:
         raise FileNotFoundError(f"cred.env nicht gefunden: '{cred_path}'")
 
     load_dotenv(cred_path, override=True)
-    host = os.environ.get("CSV_HOST")
-    user = os.environ.get("CSV_USER")
-    password = os.environ.get("CSV_PASSWORD")
+    host = os.environ.get("SMB_HOST")
+    user = os.environ.get("SMB_USER")
+    password = os.environ.get("SMB_PASSWORD")
 
     if not host:
-        raise RuntimeError(f"CSV_HOST fehlt in '{cred_path}'.")
+        raise RuntimeError(f"SMB_HOST fehlt in '{cred_path}'.")
 
-    full_path = Path("\\\\" + "\\".join((host, *share_path.parts, metadata_file)))
+    full_path = Path("\\\\" + "\\".join((host, *share_path.parts, file_name)))
 
     if user:
         share = f"\\\\{host}\\IPC$"
@@ -386,6 +417,9 @@ def find_all_field_values(metadata: Any, field: str) -> List[Any]:
             collect(metadata[field])                    # Pfad direkt vorhanden
         else:
             walk(metadata, tuple(field.split(".")))     # verschachtelte Struktur
+        if not results:
+            # Custom-Feldnamen mit Punkt stehen mit Unterstrich unter custom_metadata
+            walk(metadata, (custom_field_parent, field.replace(".", "_")))
     else:
         recurse(metadata)
 
@@ -394,13 +428,18 @@ def find_all_field_values(metadata: Any, field: str) -> List[Any]:
 
 def eval_request_item(metadata: dict, request_item: tuple) -> bool:
     request_field, request_operator, request_value = request_item
+    request_operator, negated = split_negation(request_operator)
     actual_values = find_all_field_values(metadata, request_field)
 
     if not actual_values:
         return False
 
-# logik für not -> return rumdrehen?
+    result = matches_operator(actual_values, request_operator, request_value)
+    return not result if negated else result
 
+
+def matches_operator(actual_values: list, request_operator: str, request_value: Any) -> bool:
+    """Prueft, ob einer der gefundenen Werte zum Operator passt."""
     if request_operator == "is":
         for value in actual_values:
             if str(value).casefold() == str(request_value).casefold():
@@ -443,31 +482,18 @@ def eval_request_item(metadata: dict, request_item: tuple) -> bool:
 
 
 def eval_requests(metadata: dict, requests: tuple) -> bool:
-    result = []
+    parts = []
 
     for item in requests:
         if isinstance(item, tuple):
-            result.append(eval_request_item(metadata, item))
+            parts.append(eval_request_item(metadata, item))
         elif isinstance(item, str):
-            result.append(item)
+            parts.append(item)
 
-    if not result:
+    if not parts:
         return False
 
-    acc = result[0]
-    index = 1
-    while index < len(result):
-        operator = result[index]
-        next_result = result[index + 1] if index + 1 < len(result) else False
-
-        if operator == "and":
-            acc = acc and next_result
-        elif operator == "or":
-            acc = acc or next_result
-
-        index += 2
-
-    return acc
+    return bool(fold_logic(parts, bool_logic))
 
 
 # --------- MAIN ---------
