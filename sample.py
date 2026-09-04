@@ -15,11 +15,11 @@ app_version = "0.1"
 base_path = Path(__file__).parent
 main_log = base_path / "searcher.log"
 cred_path = base_path / "cred.env"
-result_path = base_path / "searches"
+result_folder = "searches"
 
 
 # --------- CONFIG ---------
-metadata_source = "csv"     # "api"
+metadata_source = "file"    # "file" (Parquet auf dem Share) oder "api"
 offset = 0
 limit = False
 
@@ -42,10 +42,11 @@ if __name__ == "__main__":
                            f"{searcher.app_name} {searcher.app_version} verlinkt.")
 
     def print_progress(message: str) -> None:
-        print(f"\r{message:<60}", end="", flush=True)
+        print(f"\r{message:<80}", end="", flush=True)
 
     searcher.link(metadata_source, cred_path, offset=offset, limit=limit,
-                  on_progress=print_progress, api_link=lambda: tb_link_api(cred_path, "metadata"))
+                  on_progress=print_progress,
+                  api_link=lambda: tb_link_api(cred_path, "metadata"))
 
     for search in searches:
         match, progress, error = searcher.find(search)
@@ -57,12 +58,13 @@ if __name__ == "__main__":
             continue
 
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        result_csv = tb_make_path(result_path, search["name"], f"result_{timestamp}.csv")
+        search_name = search["name"]
+        result_file = tb_make_path(base_path, result_folder,
+                                   f"{search_name}_result_{timestamp}.csv")
 
-        with open(result_csv, "w", newline="", encoding="utf-8-sig") as csvfile:
-            writer = csv.writer(csvfile)
+        with open(result_file, "w", newline="", encoding="utf-8-sig") as result_handle:
+            writer = csv.writer(result_handle)
             writer.writerow(search["return_fields"])
             writer.writerows(match)
-
-        print(progress)
+            
         tb_write_log(main_log, progress)
