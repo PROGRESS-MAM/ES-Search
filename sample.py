@@ -20,8 +20,6 @@ result_folder = "searches"
 
 # --------- CONFIG ---------
 metadata_source = "file"    # "file" (Parquet auf dem Share) oder "api"
-offset = 0
-limit = False
 
 
 # --------- SEARCHES ---------
@@ -29,7 +27,7 @@ searches = [
     {
         "name": "LTO Content",
         "request_fields": (
-            ("clip_id", "is", "8505"),
+            ("display_backups", "is", "LS1901L7"),
         ),
         "return_fields": ("clip_id", "media_space_name", "display_name", "hash", "userpath", "display_backups"),
     }
@@ -44,8 +42,7 @@ if __name__ == "__main__":
     def print_progress(message: str) -> None:
         print(f"\r{message:<80}", end="", flush=True)
 
-    searcher.link(metadata_source, cred_path, offset=offset, limit=limit,
-                  on_progress=print_progress,
+    searcher.link(metadata_source, cred_path, on_progress=print_progress,
                   api_link=lambda: tb_link_api(cred_path, "metadata"))
 
     for search in searches:
@@ -66,5 +63,5 @@ if __name__ == "__main__":
             writer = csv.writer(result_handle)
             writer.writerow(search["return_fields"])
             writer.writerows(match)
-
+            
         tb_write_log(main_log, progress)

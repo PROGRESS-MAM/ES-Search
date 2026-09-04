@@ -40,6 +40,9 @@ SMB_USER=benutzer
 SMB_PASSWORD=geheim
 ```
 
+`SMB_USER` und `SMB_PASSWORD` sind optional – fehlen sie, wird kein `net use` ausgeführt und der
+Pfad muss bereits erreichbar sein.
+
 Für die API-Datenquelle zusätzlich:
 
 ```env
@@ -63,8 +66,6 @@ cred_path = Path(__file__).parent / "cred.env"
 searcher.link(
     "file",                                                 # "file" oder "api"
     cred_path,                                              # Pfad zur cred.env
-    offset=0,                                               # Zahl oder False
-    limit=False,                                            # Zahl oder False = alle
     on_progress=print_progress,                             # optional
     api_link=lambda: tb_link_api(cred_path, "metadata"),    # nur für "api"
 )
@@ -77,8 +78,8 @@ for search in searches:
         continue
 ```
 
-`link(...)` einmal aufrufen, danach beliebig viele `find(...)`. Pro Suche lassen sich
-`offset` und `limit` überschreiben: `searcher.find(search, offset=0, limit=1000)`.
+`link(...)` einmal aufrufen, danach beliebig viele `find(...)`. Jede Suche läuft immer über den
+kompletten Datenbestand.
 
 Rückgabe von `find`:
 
@@ -87,6 +88,9 @@ Rückgabe von `find`:
 | `match` | Liste der Ergebniszeilen in Reihenfolge der `return_fields` |
 | `progress` | Statustext |
 | `error` | Text inkl. Traceback oder `None`, Teiltreffer bleiben in `match` |
+
+Ist ein `on_progress`-Callback gesetzt, gibt der Searcher die Abschlussmeldung dort bereits selbst
+aus.
 
 ## Aufbau einer Suche
 
@@ -105,7 +109,7 @@ searches = [
 ```
 
 - `name` – für Statusmeldungen und Ergebnisdateinamen
-- `request_fields` – Bedingungen `(feld, operator, wert)`, verknüpft mit `"and"` und `"or"`
+- `request_fields` – Bedingungen `(feld, operator, wert)`, verknüpft mit `"and"` oder `"or"`
 - `return_fields` – Felder pro Treffer, Mehrfachwerte werden mit `; ` verbunden
 
 Feldnamen sind unabhängig von Groß-/Kleinschreibung. Ein Name ohne Punkt trifft jedes Feld mit
@@ -144,7 +148,6 @@ zeilenweise exakt geprüft. Das Ergebnis ist identisch zur API-Suche, nur deutli
 - Der Vorfilter greift nur bei `is` und `contains` auf Textspalten, alle anderen Fälle lassen
   sämtliche Zeilen als Kandidaten durch.
 - Kommt kein Feld der Suche in der Datei vor, endet die Suche direkt ohne Treffer.
-- `offset` / `limit` beziehen sich auf Zeilen der Datei, bei der API auf Clips.
 - Der Fortschritt meldet Blockgruppe, vorgefilterte Clips und Kandidaten; bei der API dagegen
   den laufenden Clip.
 
@@ -157,6 +160,8 @@ python sample.py
 `sample.py` zeigt einen vollständigen Caller mit Konfiguration, Suchdefinitionen, Logging und
 CSV-Ausgabe. Treffer landen in `searches/<name>_result_<zeitstempel>.csv`, Meldungen in
 `searcher.log`. Alle Pfade werden in `sample.py` gesetzt.
+
+## Updates in anderen Repos
 
 ```bash
 pip install --force-reinstall --no-deps "searcher @ git+https://github.com/PROGRESS-MAM/ES-Searcher.git@main"

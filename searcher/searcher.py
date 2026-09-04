@@ -13,7 +13,7 @@ import pyarrow.parquet as pq
 
 # --------- STATIC ---------
 app_name = "Searcher"
-app_version = "1.0"
+app_version = "1.1"
 
 share_path = Path("SMB File Exchange") / "Metadata_File"
 file_name = "all_clips_all_metadata.parquet"
@@ -33,8 +33,6 @@ link_state: Dict[str, Any] = {
     "metadata_source": None,    # "api" oder "file"
     "cred_path": None,          # vom Caller uebergeben
     "api_link": None,           # Callable des Callers, liefert die API-Instanz
-    "offset": 0,                # Zahl oder False
-    "limit": False,             # Zahl oder False (= alle Clips / Rows)
     "on_progress": None,        # optionaler Callback(str)
     "api": None,                # verbundene API-Instanz
     "file_full_path": None,     # gemounteter File-Pfad
@@ -100,7 +98,6 @@ class ParquetMetadataSource:
         self.conditions = [item for item in request_fields if isinstance(item, tuple)]
         self.request_columns = self.columns_for([item[0] for item in self.conditions])
         self.value_columns = self.columns_for(fields)
-        self.num_rows = self.parquet_file.metadata.num_rows
         self.num_row_groups = self.parquet_file.num_row_groups
         self.rows_scanned = 0
         self.candidates = 0
@@ -116,25 +113,14 @@ class ParquetMetadataSource:
                     columns.append(leaf["physical"])
         return columns
 
-    def iter_clips(self, offset: int = 0, limit: Optional[int] = None) -> Iterator[Dict[str, Any]]:
+    def iter_clips(self) -> Iterator[Dict[str, Any]]:
         if self.impossible:
             report_progress("Kein Feld der Suche kommt in der Datei vor, keine Treffer moeglich")
             return
 
-        stop = self.num_rows if limit is None else min(self.num_rows, offset + limit)
-        first_row = 0
-
         for group in range(self.num_row_groups):
             group_rows = self.parquet_file.metadata.row_group(group).num_rows
-            last_row = first_row + group_rows
-
-            if last_row <= offset or first_row >= stop:
-                first_row = last_row
-                continue
-
-            lower = max(0, offset - first_row)
-            upper = min(group_rows, stop - first_row)
-            self.rows_scanned += upper - lower
+            self.rows_scanned += group_rows
 
             row_index = pa.array(range(group_rows), type=pa.int64())
             table = None
@@ -144,10 +130,6 @@ class ParquetMetadataSource:
                 table = self.parquet_file.read_row_group(group, columns=self.request_columns)
                 mask = prefilter_mask(table, self.request_fields, self.resolved,
                                       group_rows, row_index)
-
-            if lower > 0 or upper < group_rows:
-                in_range = pa.array([lower <= row < upper for row in range(group_rows)])
-                mask = in_range if mask is None else pc.and_(mask, in_range)
 
             indices = row_index if mask is None else pc.indices_nonzero(mask)
             self.candidates += len(indices)
@@ -164,8 +146,6 @@ class ParquetMetadataSource:
                     values = self.parquet_file.read_row_group(group, columns=self.value_columns)
                 for row in values.take(indices).to_pylist():
                     yield drop_empty(row)
-
-            first_row = last_row
 
 
 def collect_leaves(parquet_file) -> List[Dict[str, Any]]:
@@ -328,12 +308,6 @@ def drop_empty(value):
 
 
 # --------- FUNC SEARCH ---------
-def normalize_range(value: Union[int, bool, None], default: Optional[int]) -> Optional[int]:
-    if value is False or value is None:
-        return default
-    return int(value)
-
-
 def report_progress(message: str) -> None:
     callback = link_state.get("on_progress")
     if callable(callback):
@@ -498,12 +472,10 @@ def eval_requests(metadata: dict, requests: tuple) -> bool:
 
 # --------- MAIN ---------
 def link(metadata_source: str = "file", cred_path: Union[str, Path] = None,
-         offset: Union[int, bool] = 0, limit: Union[int, bool] = False,
          on_progress: Optional[Callable[[str], None]] = None,
          api_link: Optional[Callable[[], Any]] = None) -> None:
 
-    """Verbindet die Datenquelle. Den Pfad kennt das Modul selbst,
-    offset / limit sind eine Zahl oder False (= alles).
+    """Verbindet die Datenquelle. Den Pfad kennt das Modul selbst.
     Fuer metadata_source 'api' liefert der Caller api_link mit z.B.
     lambda: tb_link_api(cred_path, 'metadata')."""
 
@@ -513,8 +485,6 @@ def link(metadata_source: str = "file", cred_path: Union[str, Path] = None,
     link_state["metadata_source"] = metadata_source
     link_state["cred_path"] = Path(cred_path) if cred_path else None
     link_state["api_link"] = api_link
-    link_state["offset"] = offset
-    link_state["limit"] = limit
     link_state["on_progress"] = on_progress
     link_state["api"] = None
     link_state["file_full_path"] = None
@@ -530,8 +500,7 @@ def link(metadata_source: str = "file", cred_path: Union[str, Path] = None,
         link_state["file_full_path"] = mount_share()
 
 
-def find(search: dict = None, offset: Union[int, bool, None] = None,
-         limit: Union[int, bool, None] = None) -> Tuple[List[List[str]], str, Optional[str]]:
+def find(search: dict = None) -> Tuple[List[List[str]], str, Optional[str]]:
     """Durchsucht die verlinkte Datenquelle.
     Rueckgabe: match (Liste der Ergebniszeilen), progress (Statustext), error (Text oder None)."""
     matches: List[List[str]] = []
@@ -544,9 +513,6 @@ def find(search: dict = None, offset: Union[int, bool, None] = None,
         if not search:
             raise ValueError("Keine Suche uebergeben.")
 
-        offset_value = normalize_range(offset if offset is not None else link_state["offset"], 0)
-        limit_value = normalize_range(limit if limit is not None else link_state["limit"], None)
-
         fields = tuple(dict.fromkeys(
             [item[0] for item in search["request_fields"] if isinstance(item, tuple)]
             + list(search.get("return_fields", []))
@@ -556,8 +522,7 @@ def find(search: dict = None, offset: Union[int, bool, None] = None,
 
         if metadata_source == "api":
             api = link_state["api"]
-            api_limit = limit_value if limit_value is not None else api.numClips()
-            clip_ids = api.clips(offset=offset_value, limit=api_limit)
+            clip_ids = api.clips(offset=0, limit=api.numClips())
             clip_stream = (api.getClip(clip_id) for clip_id in clip_ids)
             total = len(clip_ids)
             step = 1
@@ -565,7 +530,7 @@ def find(search: dict = None, offset: Union[int, bool, None] = None,
         else:
             source = ParquetMetadataSource(link_state["file_full_path"], fields,
                                            search["request_fields"])
-            clip_stream = source.iter_clips(offset=offset_value, limit=limit_value)
+            clip_stream = source.iter_clips()
             total = None
             step = 0
 
