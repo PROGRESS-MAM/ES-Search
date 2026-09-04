@@ -19,14 +19,6 @@ share_path = Path("SMB File Exchange") / "Metadata_File"
 metadata_file = "all_clips_all_metadata.parquet"
 
 
-#besser:
-'''
-. Gefaltet schreiben statt zur Laufzeit falten — der eigentlich leichte Weg. Im Dumper pro Zeile alle String-Blätter
-casefold()-en und mit \n zu einer Suchspalte verketten. Der Vorfilter ist dann ein einziges pc.match_substring(blob, needle) ohne ignore_case,
-ohne Risikoliste, ohne Leaf-Walk — und semantisch identisch zu eval_requests. Für feldbezogene Bedingungen ist er breiter
- (Treffer könnte aus einem anderen Feld kommen), das ist erlaubt, solange nur eine Übermenge entsteht. Kostet Speicherplatz und einen Re-Dump.
-
-
 # Arrow vergleicht nur nach Kleinschreibung, eval_request_item nach casefold. Bei diesen
 # Zeichen fallen beide auseinander ("strasse" trifft "Straße" nur per casefold), darum
 # sind Zeilen mit solchen Zeichen im Vorfilter immer Kandidaten.
@@ -44,8 +36,6 @@ casefold_risk_pattern = "[" + "".join(
     "-".join(chr(int(code, 16)) for code in item.split("-"))
     for item in casefold_risk_ranges) + "]"
 
-'''
-    
 
 # --------- STATE ---------
 link_state: Dict[str, Any] = {
