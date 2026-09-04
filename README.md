@@ -1,7 +1,7 @@
 # Searcher
 
-Modul zum Durchsuchen von Clip-Metadaten – über die Metadata-API oder über die CSV-Datei
-`all_clips_all_metadata.csv` auf dem SMB-Share.
+Modul zum Durchsuchen von Clip-Metadaten – über die Metadata-API oder über die Parquet-Datei
+`all_clips_all_metadata.parquet` auf dem SMB-Share.
 
 ## Installation
 
@@ -14,7 +14,7 @@ pip config set global.extra-index-url https://artifacts.editshare.com/artifactor
 Danach den Searcher installieren:
 
 ```bash
-# nur CSV
+# nur Datei (Parquet)
 pip install "searcher @ git+https://github.com/PROGRESS-MAM/ES-Search.git@main"
 
 # mit API
@@ -29,15 +29,15 @@ pip install -e ".[api]"
 
 ## Voraussetzungen
 
-Die CSV-Datenquelle mountet den SMB-Share per `net use` und ist damit **Windows-only**.
-Die API-Datenquelle läuft plattformunabhängig.
+Die Datei-Datenquelle mountet den SMB-Share per `net use` und ist damit **Windows-only**.
+Die API-Datenquelle läuft plattformunabhängig. Den Pfad zur Datei kennt das Modul selbst.
 
-`cred.env` für die CSV-Datenquelle:
+`cred.env` für die Datei-Datenquelle:
 
 ```env
-CSV_HOST=server ip
-CSV_USER=benutzer
-CSV_PASSWORD=geheim
+SMB_HOST=server ip
+SMB_USER=benutzer
+SMB_PASSWORD=geheim
 ```
 
 Für die API-Datenquelle zusätzlich:
@@ -56,12 +56,12 @@ from toolbox import tb_link_api
 import searcher
 
 def print_progress(message):
-    print(f"\r{message:<60}", end="", flush=True)
+    print(f"\r{message:<80}", end="", flush=True)
 
 cred_path = Path(__file__).parent / "cred.env"
 
 searcher.link(
-    "csv",                                                  # "csv" oder "api"
+    "file",                                                 # "file" oder "api"
     cred_path,                                              # Pfad zur cred.env
     offset=0,                                               # Zahl oder False
     limit=False,                                            # Zahl oder False = alle
@@ -75,8 +75,6 @@ for search in searches:
     if error:
         print(error)
         continue
-
-    print(progress)
 ```
 
 `link(...)` einmal aufrufen, danach beliebig viele `find(...)`. Pro Suche lassen sich
@@ -106,12 +104,14 @@ searches = [
 ]
 ```
 
-- `name` – für Statusmeldungen und Ergebnisordner
-- `request_fields` – Bedingungen `(feld, operator, wert)`, verknüpft mit `"and"` oder `"or"`
+- `name` – für Statusmeldungen und Ergebnisdateinamen
+- `request_fields` – Bedingungen `(feld, operator, wert)`, verknüpft mit `"and"` und `"or"`
 - `return_fields` – Felder pro Treffer, Mehrfachwerte werden mit `; ` verbunden
 
-Feldnamen sind unabhängig von Groß-/Kleinschreibung. Bei der CSV zählt auch das letzte Segment
-punktierter Spaltennamen, bei der API greift `feld.unterfeld` in verschachtelte Strukturen.
+Feldnamen sind unabhängig von Groß-/Kleinschreibung. Ein Name ohne Punkt trifft jedes Feld mit
+diesem Namen, egal wie tief es liegt. Ein Name mit Punkt ist der vollständige Pfad ab der Wurzel;
+findet sich dort nichts, wird zusätzlich unter `custom_metadata` mit Unterstrich statt Punkt
+gesucht (`foo.bar` → `custom_metadata.foo_bar`). Beide Datenquellen lösen Feldnamen gleich auf.
 
 ### Operatoren
 
@@ -120,6 +120,9 @@ punktierter Spaltennamen, bei der API greift `feld.unterfeld` in verschachtelte 
 | `is` | exakte Übereinstimmung, Groß-/Kleinschreibung ignoriert |
 | `contains` | Teilstring; als Wert ist auch eine Liste erlaubt, Treffer sobald ein Eintrag passt |
 | `>` `<` `>=` `<=` | numerischer Vergleich, nicht konvertierbare Werte werden übersprungen |
+
+Jeder Operator lässt sich negieren: `is not`, `contains not`, `not >`, `not <`, `not >=`, `not <=`.
+Die Negation kehrt das Ergebnis der Bedingung um; ein fehlendes Feld bleibt dabei `False`.
 
 Ein Feld gilt als Treffer, sobald **einer** seiner Werte passt. Fehlendes oder leeres Feld ist
 `False`. Ein unbekannter Operator ist ebenfalls `False`, ohne Fehlermeldung – Tippfehler zeigen
@@ -132,6 +135,19 @@ sich als „0 Treffer“.
 (A, "or",  B, "and", C)    #  ->  (A or B) and C
 ```
 
+## Datei-Datenquelle
+
+Die Parquet-Datei wird blockgruppenweise gelesen. Pro Blockgruppe läuft zuerst ein vektorisierter
+Vorfilter über die Spalten der Bedingungen, nur die Kandidatenzeilen werden anschließend
+zeilenweise exakt geprüft. Das Ergebnis ist identisch zur API-Suche, nur deutlich schneller.
+
+- Der Vorfilter greift nur bei `is` und `contains` auf Textspalten, alle anderen Fälle lassen
+  sämtliche Zeilen als Kandidaten durch.
+- Kommt kein Feld der Suche in der Datei vor, endet die Suche direkt ohne Treffer.
+- `offset` / `limit` beziehen sich auf Zeilen der Datei, bei der API auf Clips.
+- Der Fortschritt meldet Blockgruppe, vorgefilterte Clips und Kandidaten; bei der API dagegen
+  den laufenden Clip.
+
 ## Beispielimplementierung
 
 ```bash
@@ -139,20 +155,8 @@ python sample.py
 ```
 
 `sample.py` zeigt einen vollständigen Caller mit Konfiguration, Suchdefinitionen, Logging und
-CSV-Ausgabe. Treffer landen in `searches/<name>/result_<zeitstempel>.csv`, Meldungen in
+CSV-Ausgabe. Treffer landen in `searches/<name>_result_<zeitstempel>.csv`, Meldungen in
 `searcher.log`. Alle Pfade werden in `sample.py` gesetzt.
-
-## Neues Release
-
-1. In `searcher/searcher.py` die Version erhöhen:
-
-   ```python
-   app_version = "0.7"
-   ```
-
-2. Changes committen und pushen.
-
-## Updates in anderen Repos
 
 ```bash
 pip install --force-reinstall --no-deps "searcher @ git+https://github.com/PROGRESS-MAM/ES-Searcher.git@main"

@@ -29,7 +29,7 @@ searches = [
     {
         "name": "LTO Content",
         "request_fields": (
-            ("display_backups", "is", "LS1901L7"),
+            ("clip_id", "is", "8505"),
         ),
         "return_fields": ("clip_id", "media_space_name", "display_name", "hash", "userpath", "display_backups"),
     }
@@ -66,5 +66,5 @@ if __name__ == "__main__":
             writer = csv.writer(result_handle)
             writer.writerow(search["return_fields"])
             writer.writerows(match)
-            
+
         tb_write_log(main_log, progress)
