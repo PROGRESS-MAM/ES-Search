@@ -25,13 +25,50 @@ metadata_source = "file"    # "file" (Parquet auf dem Share) oder "api"
 # --------- SEARCHES ---------
 searches = [
     {
-        "name": "LTO Content",
+        "name": "progress_overview",
         "request_fields": (
-            ("display_backups", "is", "LS1901L7"),
+            ("custom_metadata.009 Upload Veritone", "is", "True"),
         ),
-        "return_fields": ("clip_id", "media_space_name", "display_name", "hash", "userpath", "display_backups"),
+        "return_fields": (
+            "custom_metadata.038 Medium Type",
+            "asset.asset_type_text",
+            "custom_metadata.001 Identifier",
+            "custom_metadata.006 Source PROGRESS",
+            "custom_metadata.007 Collection PROGRESS",
+            "custom_metadata.009 Upload Veritone",
+            "custom_metadata.009a Progress Archive URL",
+            "custom_metadata.009b Veritone Asset ID",
+            "custom_metadata.014 Title Original",
+            "custom_metadata.015 Title German",
+            "custom_metadata.048 Rights Status",
+            "custom_metadata.048b Notes Rights Status",
+            "custom_metadata.049 Rights Owner.[]",
+            "custom_metadata.052 Third Party Rights",
+            "custom_metadata.053 Notes 3rd Party Rights",
+            "custom_metadata.074a Country Of Action German.[]",
+            "custom_metadata.076a City Of Action German",
+            "custom_metadata.080 Production Year",
+            "custom_metadata.082 Shoot Year",
+            "custom_metadata.084 Decade.[]",
+            "custom_metadata.098a Summary German",
+            "custom_metadata.099a Shotlist German",
+            "custom_metadata.100a Keywords German",
+            "custom_metadata.101a Genre German.[]",
+            "custom_metadata.102a Personalities German",
+            "custom_metadata.103a Personalities Secondary German",
+            "video.[].timecode_duration",
+            "video.[].frame_rate",
+            "has_audio",
+            "has_video",
+            "custom_metadata.031a Main Language German",
+            "custom_metadata.029a Language Audio German.[]",
+        ),
     }
 ]
+
+
+
+
 
 
 # --------- EXEC ---------
