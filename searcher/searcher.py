@@ -11,9 +11,9 @@ import pyarrow.compute as pc
 import pyarrow.parquet as pq
 
 
-# --------- STATIC ---------
+# --------- CONFIG ---------
 app_name = "Searcher"
-app_version = "1.1"
+app_version = "1.2"
 
 share_path = Path("SMB File Exchange") / "Metadata_File"
 file_name = "all_clips_all_metadata.parquet"
@@ -238,7 +238,7 @@ def prefilter_item(table, leaves, operator, request_value, num_rows, row_index):
         return pa.array([False] * num_rows)
 
     operator, negated = split_negation(operator)
-    if negated or operator not in ("is", "contains"):
+    if negated or operator not in ("is", "contains", "starts_with", "ends_with"):
         return None
 
     if isinstance(request_value, (list, tuple)):
@@ -420,17 +420,15 @@ def matches_operator(actual_values: list, request_operator: str, request_value: 
                 return True
         return False
 
-    if request_operator == "contains":
-        if isinstance(request_value, (list, tuple)):
-            request_values = request_value
-        else:
-            request_values = (request_value,)
-
-        for act_value in actual_values:
-            for req_value in request_values:
-                if str(req_value).casefold() in str(act_value).casefold():
-                    return True
-        return False
+    if request_operator in ("contains", "starts_with", "ends_with"):
+        request_values = request_value if isinstance(request_value, (list, tuple)) else (request_value,)
+        compare = {
+            "contains": lambda actual, sought: sought in actual,
+            "starts_with": str.startswith,
+            "ends_with": str.endswith,
+        }[request_operator]
+        return any(compare(str(actual).casefold(), str(sought).casefold())
+                   for actual in actual_values for sought in request_values)
 
     if request_operator in (">", "<", ">=", "<="):
         value_num = float(request_value)

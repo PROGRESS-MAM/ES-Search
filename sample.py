@@ -4,11 +4,12 @@
 from toolbox import tb_link_api, tb_write_log, tb_make_path
 import searcher
 import datetime
+import traceback
 import csv
 from pathlib import Path
 
 
-# --------- STATIC ---------
+# --------- CONFIG ---------
 app_name = "Search Runner"
 app_version = "0.1"
 
@@ -18,61 +19,24 @@ cred_path = base_path / "cred.env"
 result_folder = "searches"
 
 
-# --------- CONFIG ---------
 metadata_source = "file"    # "file" (Parquet auf dem Share) oder "api"
 
 
 # --------- SEARCHES ---------
 searches = [
     {
-        "name": "progress_overview",
+        "name": "AEP-Dateien im Mediaspace Oury Jalloh Render",
         "request_fields": (
-            ("custom_metadata.009 Upload Veritone", "is", "True"),
+            ("media_space_name", "is", "Oury Jalloh Render"),
+            "and",
+            ("userpath", "ends_with", ".aep"),
         ),
-        "return_fields": (
-            "custom_metadata.038 Medium Type",
-            "asset.asset_type_text",
-            "custom_metadata.001 Identifier",
-            "custom_metadata.006 Source PROGRESS",
-            "custom_metadata.007 Collection PROGRESS",
-            "custom_metadata.009 Upload Veritone",
-            "custom_metadata.009a Progress Archive URL",
-            "custom_metadata.009b Veritone Asset ID",
-            "custom_metadata.014 Title Original",
-            "custom_metadata.015 Title German",
-            "custom_metadata.048 Rights Status",
-            "custom_metadata.048b Notes Rights Status",
-            "custom_metadata.049 Rights Owner.[]",
-            "custom_metadata.052 Third Party Rights",
-            "custom_metadata.053 Notes 3rd Party Rights",
-            "custom_metadata.074a Country Of Action German.[]",
-            "custom_metadata.076a City Of Action German",
-            "custom_metadata.080 Production Year",
-            "custom_metadata.082 Shoot Year",
-            "custom_metadata.084 Decade.[]",
-            "custom_metadata.098a Summary German",
-            "custom_metadata.099a Shotlist German",
-            "custom_metadata.100a Keywords German",
-            "custom_metadata.101a Genre German.[]",
-            "custom_metadata.102a Personalities German",
-            "custom_metadata.103a Personalities Secondary German",
-            "video.[].timecode_duration",
-            "video.[].frame_rate",
-            "has_audio",
-            "has_video",
-            "custom_metadata.031a Main Language German",
-            "custom_metadata.029a Language Audio German.[]",
-        ),
+        "return_fields": ("clip_id", "media_space_name", "userpath"),
     }
 ]
 
-
-
-
-
-
-# --------- EXEC ---------
-if __name__ == "__main__":
+# --------- MAIN ---------
+def main() -> None:
     tb_write_log(main_log, f"{app_name} {app_version} started, "
                            f"{searcher.app_name} {searcher.app_version} verlinkt.")
 
@@ -94,7 +58,7 @@ if __name__ == "__main__":
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         search_name = search["name"]
         result_file = tb_make_path(base_path, result_folder,
-                                   f"{search_name}_result_{timestamp}.csv")
+                                   f"{timestamp}_{search_name}_result.csv")
 
         with open(result_file, "w", newline="", encoding="utf-8-sig") as result_handle:
             writer = csv.writer(result_handle)
@@ -102,3 +66,14 @@ if __name__ == "__main__":
             writer.writerows(match)
             
         tb_write_log(main_log, progress)
+
+
+# --------- EXEC ---------
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception as exc:
+        error_message = f"Unhandled error in main: {exc}"
+        print(error_message)
+        tb_write_log(main_log, error_message)
+        tb_write_log(main_log, traceback.format_exc())
