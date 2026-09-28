@@ -17,7 +17,7 @@ import pyarrow.parquet as pq
 
 # --------- CONFIG ---------
 app_name = "Searcher"
-app_version = "1.4"
+app_version = "1.5.1"
 
 share_path = Path("SMB File Exchange") / "Metadata_File"
 file_name = "all_clips_all_metadata.parquet"
@@ -511,6 +511,14 @@ def _field_key(name):
     return name.casefold()
 
 
+def _matching_search_fields(name, definitions):
+    key = _field_key(name)
+    return [field for field in definitions if isinstance(field, dict) and
+            any(_field_key(alias) == key for alias in
+                (field.get("fixed_field"), field.get("custom_field"), field.get("name"))
+                if isinstance(alias, str))]
+
+
 def _search_fields():
     fields = link_state.get("search_fields")
     if fields is None:
@@ -524,14 +532,22 @@ def _search_fields():
     return fields
 
 
+def _resolve_result_fields(fields, definitions=()):
+    resolved = []
+    for name in fields:
+        candidates = [field for field in _matching_search_fields(name, definitions)
+                      if isinstance(field.get("custom_field"), str) and field["custom_field"]]
+        if len(candidates) > 1:
+            raise ValueError(f"Ausgabefeld '{name}' ist mehrdeutig; bitte asset.custom.<db_key> verwenden.")
+        # Search uses CUSTOM_field_N; clip metadata stores asset.custom.field_N.
+        resolved.append(f"asset.custom.{candidates[0]['custom_field']}" if candidates else name)
+    return tuple(resolved)
+
+
 def _resolve_search_field(name, operator):
     if not isinstance(name, str) or not name.strip():
         raise ValueError("Ein Suchfeld muss als Feldname angegeben sein.")
-    key = _field_key(name)
-    candidates = [field for field in _search_fields() if isinstance(field, dict) and
-                  any(_field_key(alias) == key for alias in
-                      (field.get("fixed_field"), field.get("custom_field"), field.get("name"))
-                      if isinstance(alias, str))]
+    candidates = _matching_search_fields(name, _search_fields())
     if not candidates:
         raise ValueError(f"Suchfeld '{name}' fehlt im Search-Fields-Index der Vorlage {search_template}.")
     if len(candidates) != 1:
@@ -672,6 +688,7 @@ def link(metadata_source: str = "file", cred_path: Union[str, Path] = None,
 def find(search: dict = None, on_page: Optional[Callable[[List[List[str]]], None]] = None) -> Tuple[List[List[str]], str, Optional[str]]:
     """Durchsucht die Quelle; on_page erhaelt vollstaendige API-Seiten als Ergebniszeilen.
 
+    API-Ausgabefelder akzeptieren auch Custom-Feldnamen aus dem Search-Fields-Index.
     Rueckgabe: (Trefferzeilen, Abschlussstatus, Fehlertext oder None).
     """
     matches: List[List[str]] = []
@@ -687,6 +704,7 @@ def find(search: dict = None, on_page: Optional[Callable[[List[List[str]]], None
         if not isinstance(fields, (list, tuple)) or any(not isinstance(field, str) for field in fields):
             raise ValueError("return_fields muss eine Liste von Feldnamen sein.")
 
+        resolved_fields = _resolve_result_fields(fields, _search_fields() if mode == "api" else ())
         source = None
         if mode == "file":
             names = tuple(dict.fromkeys(
@@ -700,7 +718,7 @@ def find(search: dict = None, on_page: Optional[Callable[[List[List[str]]], None
         start_message = f"Suche '{search.get('name', '')}' gestartet"
         (_api_progress if mode == "api" else report_progress)(start_message)
         for batch, total, started in batches:
-            rows = [_result_row(row, fields) for row in batch
+            rows = [_result_row(row, resolved_fields) for row in batch
                     if mode == "api" or eval_requests(row, request_fields)]
             if mode == "api" and on_page is not None:
                 on_page(rows)
