@@ -33,7 +33,6 @@ searches = [
             ("userpath", "ends_with", ".aep"),
         ),
         "return_fields": ("clip_id", "media_space_name", "userpath"),
-        "api_fields": {"media_space_name": "MEDIA_SPACES_NAMES", "userpath": "CLIPNAME"},
     }
 ]
 

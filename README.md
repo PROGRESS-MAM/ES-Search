@@ -61,9 +61,8 @@ searcher.link("api", cred_path, on_progress=print,
 
 search = {
     "name": "Meine Suche",
-    "request_fields": (("media_space_name", "is", "Oury Jalloh Render"),),
+    "request_fields": (("MEDIA_SPACES_NAMES", "is", "Oury Jalloh Render"),),
     "return_fields": ("clip_id", "display_name", "userpath"),
-    "api_fields": {"media_space_name": "MEDIA_SPACES_NAMES"},
 }
 match, progress, error = searcher.find(search)
 if error:
@@ -86,17 +85,17 @@ Searcher angelegt.
 
 ## Suchdefinition
 
-**Eine** Suchdefinition gilt für beide Datenquellen. `request_fields` besteht aus Tupeln
-`(feld, operator, wert)` mit `"and"`/`"or"` dazwischen.
+Beide Datenquellen verwenden dasselbe Suchformat und dieselbe Ergebnisverarbeitung.
+`request_fields` besteht aus Tupeln `(feld, operator, wert)` mit `"and"`/`"or"` dazwischen.
+Der Aufrufer gibt die für die jeweils gewählte Quelle gültigen Feldnamen direkt an;
+der Searcher übersetzt keine Feldnamen zwischen `file` und `api`.
 `"and"` und `"or"` werden strikt von links nach rechts, ohne Klammern und Präzedenz,
 ausgewertet: `(A, "and", B, "or", C)` bedeutet `(A and B) or C`.
-`return_fields` bezeichnet die Felder oder Feldpfade, die in der CSV erscheinen sollen;
-Mehrfachwerte werden mit `; ` verbunden. Stimmen die lokalen Metadatenfeldnamen nicht mit
-den Search Fields der API überein, ordnet `api_fields` sie innerhalb derselben Suche
-zu, z. B. `{"media_space_name": "MEDIA_SPACES_NAMES"}`. Im Datei-Modus ändert diese
-Zuordnung weder die Suche noch die Ausgabe. Im Beispiel wird `userpath` ausschließlich
-für die Dateiendungssuche auf das API-Feld `CLIPNAME` abgebildet; prüfe bei anderen
-Suchwerten, ob die beiden Felder fachlich dieselbe Bedeutung haben.
+`return_fields` bezeichnet die Felder oder Feldpfade aus den Ergebnisdatensätzen,
+die in der CSV erscheinen sollen; Mehrfachwerte werden mit `; ` verbunden.
+Für `api` muss jeder Name in `request_fields` im Search-Fields-Index der Vorlage
+vorkommen. `return_fields` sind davon unabhängig und werden aus den vollständigen
+Metadatensätzen gelesen. Für `file` bleiben die Namen der Parquet-Felder maßgeblich.
 
 Die Operatoren stehen in **einer gemeinsamen Zuordnung** für beide Modi. Unterstützt: `is`, `is not`, `contains`, `contains not`,
 `starts_with`, `ends_with`, `>`, `<`, `>=`, `<=`, `not >`,
@@ -112,7 +111,7 @@ Die Operatoren stehen in **einer gemeinsamen Zuordnung** für beide Modi. Unters
 1. Der Searcher ruft `GET /fields?template=LOOKS-PROGRESS&include_filters=true` auf und
    verwendet diese Feldliste als Index. Suchfelder müssen dort vorhanden und such- oder
    filterbar sein; akzeptiert werden `fixed_field` oder der Feldname der Vorlage
-   (Groß-/Kleinschreibung sowie Leerzeichen/Unterstrich werden beim Abgleich ignoriert).
+   (Groß-/Kleinschreibung wird ignoriert; die Feldbezeichnung ansonsten unverändert benutzt).
    `sample.py` nutzt als Beispiel die dokumentierten Felder `MEDIA_SPACES_NAMES` und
    `CLIPNAME`. Welche Felder und Vergleichsoperatoren verfügbar sind, hängt von der
    tatsächlichen Vorlage und FLOW-Installation ab. Die Liste wird pro `link` gespeichert.
@@ -168,10 +167,12 @@ Search-API über Treffer und die Semantik fehlender Felder. Der Vorfilter nutzt 
 python sample.py
 ```
 
-`sample.py` enthält eine gemeinsame Suchliste mit optionaler `api_fields`-Zuordnung.
-Voreingestellt
-bleibt `metadata_source = "file"`. Für die API setze `metadata_source = "api"` und
-installiere die optionale API-Abhängigkeit. Treffer liegen unter
+`sample.py` enthält genau eine Suchliste; voreingestellt bleibt
+`metadata_source = "file"` mit den bisherigen Parquet-Feldern `media_space_name` und
+`userpath`. Für `metadata_source = "api"` muss der Aufrufer **die Feldnamen in
+`request_fields` selbst** auf passende Einträge aus dem Search-Fields-Index ändern
+(z. B. `MEDIA_SPACES_NAMES` und `CLIPNAME`) und die optionale API-Abhängigkeit
+installieren. Es gibt keine automatische Feldzuordnung und keine zweite Suchliste. Treffer liegen unter
 `searches/<zeitstempel>_<name>_result.csv`, Meldungen unter `searcher.log`.
 Im API-Modus entsteht die CSV mit Kopfzeile vor der Suche; nach jeder Seite werden
 weitere Treffer gesichert. Im Datei-Modus wird die CSV wie bisher erst zum Schluss

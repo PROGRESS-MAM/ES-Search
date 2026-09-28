@@ -490,7 +490,7 @@ def _api_response(action, callback):
 
 
 def _field_key(name):
-    return name.casefold().replace(" ", "_")
+    return name.casefold()
 
 
 def _search_fields():
@@ -505,31 +505,28 @@ def _search_fields():
     return fields
 
 
-def _resolve_search_field(name, operator, aliases):
+def _resolve_search_field(name, operator):
     if not isinstance(name, str) or not name.strip():
         raise ValueError("Ein Suchfeld muss als Feldname angegeben sein.")
-    resolved = aliases.get(name, name)
-    if not isinstance(resolved, str) or not resolved.strip():
-        raise ValueError(f"api_fields enthaelt fuer '{name}' keinen gueltigen Feldnamen.")
-    key = _field_key(resolved)
+    key = _field_key(name)
     candidates = [field for field in _search_fields() if isinstance(field, dict) and
                   any(_field_key(alias) == key for alias in
                       (field.get("fixed_field"), field.get("custom_field"), field.get("name"))
                       if isinstance(alias, str))]
     if not candidates:
-        raise ValueError(f"Suchfeld '{resolved}' fehlt im Search-Fields-Index der Vorlage {search_template}.")
+        raise ValueError(f"Suchfeld '{name}' fehlt im Search-Fields-Index der Vorlage {search_template}.")
     if len(candidates) != 1:
-        raise ValueError(f"Suchfeld '{resolved}' ist mehrdeutig; bitte fixed_field verwenden.")
+        raise ValueError(f"Suchfeld '{name}' ist mehrdeutig; bitte fixed_field verwenden.")
     field = candidates[0]
     if not (field.get("can_search") or field.get("can_filter")):
-        raise ValueError(f"Suchfeld '{resolved}' ist weder suchbar noch filterbar.")
+        raise ValueError(f"Suchfeld '{name}' ist weder suchbar noch filterbar.")
     spec = operator_specs.get(operator)
     if not spec or spec[0] not in field.get("match_options", []):
-        raise ValueError(f"Operator '{operator}' ist fuer Suchfeld '{resolved}' nicht verfuegbar; erlaubt: {field.get('match_options', [])}.")
+        raise ValueError(f"Operator '{operator}' ist fuer Suchfeld '{name}' nicht verfuegbar; erlaubt: {field.get('match_options', [])}.")
     return (field.get("name") if field.get("custom_field") else field.get("fixed_field") or field.get("name")), spec[0]
 
 
-def _search_node(request_fields, aliases):
+def _search_node(request_fields):
     if not isinstance(request_fields, (tuple, list)) or not request_fields:
         raise ValueError("request_fields muss mindestens eine Bedingung enthalten.")
 
@@ -537,7 +534,7 @@ def _search_node(request_fields, aliases):
         if not isinstance(item, tuple) or len(item) != 3:
             raise ValueError("Bedingung muss (feld, operator, wert) sein.")
         name, operator, value = item
-        field, match = _resolve_search_field(name, operator, aliases)
+        field, match = _resolve_search_field(name, operator)
         values = value if operator == "contains" and isinstance(value, (list, tuple)) else (value,)
         if not values or any(not isinstance(entry, (str, int, float)) or isinstance(entry, bool)
                              for entry in values):
@@ -582,10 +579,7 @@ def _cached_page(cache_id, start, total):
 
 
 def _api_batches(search):
-    aliases = search.get("api_fields", {})
-    if not isinstance(aliases, dict):
-        raise ValueError("api_fields muss eine Zuordnung von lokalen zu API-Suchfeldern sein.")
-    node = _search_node(search["request_fields"], aliases)
+    node = _search_node(search["request_fields"])
     api = link_state["api"]
     created = _api_response("Cached Search erstellen", lambda: api.postThatReturnsObj("/search/cached", node))
     if not isinstance(created, dict) or not isinstance(created.get("cache_id"), str):
