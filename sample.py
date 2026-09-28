@@ -26,23 +26,26 @@ metadata_source = "api"    # "file" (Parquet auf dem Share) oder "api"
 # --------- SEARCHES ---------
 searches = [
     {
-        "name": "AEP-Dateien im Mediaspace Oury Jalloh Render",
+        "name": "Historiathek",
         "request_fields": (
-            ("Media Space", "is", "Oury Jalloh Render"),
-            "and",
-            ("FILENAME", "ends_with", ".aep"),
+            ("006 Source PROGRESS", "is", "Historiathek"),
         ),
-        "return_fields": ("clip_id", "userpath"),
+        "return_fields": ("clip_id", "001 Identifier","014 Title Original","clip_name_with_extension", "hash"),
     }
 ]
+
 
 # --------- MAIN ---------
 def main() -> None:
     tb_write_log(main_log, f"{app_name} {app_version} started, "
                            f"{searcher.app_name} {searcher.app_version} verlinkt.")
 
+    last_width = 0
+
     def print_progress(message: str) -> None:
-        print(f"\r{message:<80}", end="", flush=True)
+        nonlocal last_width
+        print(f"\r{message}{' ' * max(0, last_width - len(message))}", end="", flush=True)
+        last_width = len(message)
 
     searcher.link(metadata_source, cred_path, on_progress=print_progress,
                   api_link=(lambda: tb_link_api(cred_path, "search")) if metadata_source == "api" else None)

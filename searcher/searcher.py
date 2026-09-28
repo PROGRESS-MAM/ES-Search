@@ -5,9 +5,11 @@ from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
 from dotenv import load_dotenv
 from pathlib import Path
 import os
+import shutil
 import subprocess
 import time
 from datetime import timedelta
+from threading import Event, Thread
 import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.parquet as pq
@@ -481,8 +483,24 @@ search_template = "LOOKS-PROGRESS"
 page_size = 100
 
 
-def _api_response(action, callback):
-    result = callback()
+def _api_response(action, callback, status=None):
+    if status is not None:
+        stopped = Event()
+        started = time.monotonic()
+        _api_progress(status(0))
+
+        def heartbeat():
+            while not stopped.wait(2):
+                _api_progress(status(int(time.monotonic() - started)))
+
+        thread = Thread(target=heartbeat, daemon=True)
+        thread.start()
+    try:
+        result = callback()
+    finally:
+        if status is not None:
+            stopped.set()
+            thread.join()
     code = link_state["api"].last_return_code()
     if code != 200:
         raise RuntimeError(f"Search-API: {action} fehlgeschlagen (HTTP {code}).")
@@ -498,7 +516,8 @@ def _search_fields():
     if fields is None:
         api = link_state["api"]
         fields = _api_response("Search Fields", lambda: api.getThatReturnsObj(
-            f"/search/fields?template={search_template}&include_filters=true"))
+            f"/search/fields?template={search_template}&include_filters=true"),
+            status=lambda elapsed: f"Suchfelder werden geladen, warte seit {elapsed} s")
         if not isinstance(fields, list):
             raise ValueError("Search Fields liefert keine Feldliste.")
         link_state["search_fields"] = fields
@@ -555,13 +574,30 @@ def _api_progress(message):
         print(message, flush=True)
 
 
-def _cached_page(cache_id, start, total):
+def _cached_progress(checked, total, page, started, detail=""):
+    ratio = checked / total if total else 1
+    eta = (str(timedelta(seconds=round((time.monotonic() - started) / checked * (total - checked))))
+           if checked and checked < total else "--:--:--" if total and not checked else "0:00:00")
+    pages = (total + page_size - 1) // page_size
+    prefix = "Cached ["
+    suffix = f"] {ratio:.0%} | Clips {checked}/{total} | Seite {page} von {pages} | Restzeit {eta}"
+    extra = f" | {detail}" if detail else ""
+    width = max(4, min(18, shutil.get_terminal_size((100, 24)).columns - 1
+                       - len(prefix) - len(suffix) - len(extra)))
+    filled = round(width * ratio)
+    return f"{prefix}{'#' * filled}{'-' * (width - filled)}{suffix}{extra}"
+
+
+def _cached_page(cache_id, start, total, started):
     api = link_state["api"]
     expected = min(page_size, total - start)
+    page_number = start // page_size + 1
     deadline = time.monotonic() + 600
     while True:
         page = _api_response(f"Ergebnisse ab {start}",
-                             lambda: api.searchResults(cache_id, start, page_size))
+                             lambda: api.searchResults(cache_id, start, page_size),
+                             status=lambda elapsed: _cached_progress(
+                                 start, total, page_number, started, f"lade {elapsed}s"))
         if not isinstance(page, dict) or not isinstance(page.get("results"), list):
             raise ValueError(f"Cached Search liefert keine Ergebnisseite ab Position {start}.")
         if page.get("total") != total or page.get("start") != start:
@@ -574,23 +610,26 @@ def _cached_page(cache_id, start, total):
             raise ValueError(f"Cached Search liefert ab Position {start} keine {expected} vollstaendigen Datensaetze.")
         if time.monotonic() >= deadline:
             raise TimeoutError(f"Cached Search ab Position {start} nicht vollstaendig aufgeloest; bisherigen CSV-Stand behalten.")
-        _api_progress(f"Cached Search: Seite ab {start} wird aufgeloest, {total - start} Ergebnisse noch abzurufen")
+        _api_progress(_cached_progress(start, total, page_number, started, "Seite wird aufgeloest"))
         time.sleep(1)
 
 
 def _api_batches(search):
     node = _search_node(search["request_fields"])
     api = link_state["api"]
-    created = _api_response("Cached Search erstellen", lambda: api.postThatReturnsObj("/search/cached", node))
+    created = _api_response("Cached Search erstellen", lambda: api.postThatReturnsObj("/search/cached", node),
+                            status=lambda elapsed: f"Cached Search wird erstellt, warte seit {elapsed} s")
     if not isinstance(created, dict) or not isinstance(created.get("cache_id"), str):
         raise ValueError("Cached Search liefert keine Search-ID.")
     total = created.get("results")
     if not isinstance(total, int) or isinstance(total, bool) or total < 0:
         raise ValueError("Cached Search liefert keine gueltige Trefferzahl.")
     cache_id = created["cache_id"]
-    print(f"Cached Search: {total} Ergebnisse (Search-ID {cache_id})", flush=True)
+    _api_progress(f"Cached Search: {total} Ergebnisse (Search-ID {cache_id})")
+    started = time.monotonic()
+    _api_progress(_cached_progress(0, total, 0, started))
     for start in range(0, total, page_size):
-        yield _cached_page(cache_id, start, total), total
+        yield _cached_page(cache_id, start, total, started), total, started
 
 
 def _result_row(metadata, fields):
@@ -653,14 +692,14 @@ def find(search: dict = None, on_page: Optional[Callable[[List[List[str]]], None
             names = tuple(dict.fromkeys(
                 [item[0] for item in request_fields if isinstance(item, tuple)] + list(fields)))
             source = ParquetMetadataSource(link_state["file_full_path"], names, request_fields)
-            batches = (([row], None) for row in source.iter_clips())
+            batches = (([row], None, None) for row in source.iter_clips())
         else:
             batches = _api_batches(search)
 
         checked = 0
-        started = time.monotonic()
-        report_progress(f"Suche '{search.get('name', '')}' gestartet")
-        for batch, total in batches:
+        start_message = f"Suche '{search.get('name', '')}' gestartet"
+        (_api_progress if mode == "api" else report_progress)(start_message)
+        for batch, total, started in batches:
             rows = [_result_row(row, fields) for row in batch
                     if mode == "api" or eval_requests(row, request_fields)]
             if mode == "api" and on_page is not None:
@@ -668,9 +707,8 @@ def find(search: dict = None, on_page: Optional[Callable[[List[List[str]]], None
             matches.extend(rows)
             checked += len(batch)
             if mode == "api":
-                remaining = total - checked
-                eta = timedelta(seconds=round((time.monotonic() - started) / checked * remaining))
-                _api_progress(f"Cached Search: {checked}/{total} abgerufen, {remaining} verbleibend, ca. {eta} Restzeit, {len(matches)} Treffer")
+                page_number = (checked + page_size - 1) // page_size
+                _api_progress(_cached_progress(checked, total, page_number, started))
 
         if source is not None:
             checked = source.rows_scanned
