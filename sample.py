@@ -1,11 +1,12 @@
 ######################## SAMPLE IMPLEMENTATION ###############################
 
 # --------- IMPORTS ---------
-from toolbox import tb_link_api, tb_write_log, tb_make_path
+from toolbox import tb_write_log, tb_make_path
 import searcher
 import datetime
 import traceback
 import csv
+import os
 from pathlib import Path
 
 
@@ -35,6 +36,19 @@ searches = [
     }
 ]
 
+# --------- API SEARCHES ---------
+api_searches = [
+    {
+        "name": "AEP-Dateien im Mediaspace Oury Jalloh Render",
+        "request_fields": (
+            ("MEDIA_SPACES_NAMES", "is", "Oury Jalloh Render"),
+            "and",
+            ("CLIPNAME", "ends_with", ".aep"),
+        ),
+        "return_fields": ("clip_id", "media_space_name", "userpath"),
+    }
+]
+
 # --------- MAIN ---------
 def main() -> None:
     tb_write_log(main_log, f"{app_name} {app_version} started, "
@@ -43,10 +57,33 @@ def main() -> None:
     def print_progress(message: str) -> None:
         print(f"\r{message:<80}", end="", flush=True)
 
-    searcher.link(metadata_source, cred_path, on_progress=print_progress,
-                  api_link=lambda: tb_link_api(cred_path, "metadata"))
+    searcher.link(metadata_source, cred_path, on_progress=print_progress)
 
-    for search in searches:
+    for search in (api_searches if metadata_source == "api" else searches):
+        if metadata_source == "api":
+            timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            result_file = tb_make_path(base_path, result_folder,
+                                       f"{timestamp}_{search['name']}_result.csv")
+            with open(result_file, "w", newline="", encoding="utf-8-sig") as result_handle:
+                writer = csv.writer(result_handle)
+                writer.writerow(search["return_fields"])
+                result_handle.flush()
+                os.fsync(result_handle.fileno())
+
+                def save_page(rows: list[list[str]]) -> None:
+                    writer.writerows(rows)
+                    result_handle.flush()
+                    os.fsync(result_handle.fileno())
+
+                match, progress, error = searcher.find(search, on_page=save_page)
+            print()
+            if error:
+                print(error)
+                tb_write_log(main_log, error)
+                continue
+            tb_write_log(main_log, progress)
+            continue
+
         match, progress, error = searcher.find(search)
         print()
 
@@ -64,7 +101,7 @@ def main() -> None:
             writer = csv.writer(result_handle)
             writer.writerow(search["return_fields"])
             writer.writerows(match)
-            
+
         tb_write_log(main_log, progress)
 
 

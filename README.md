@@ -1,38 +1,28 @@
 # Searcher
 
-Modul zum Durchsuchen von Clip-Metadaten – über die Metadata-API oder über die Parquet-Datei
-`all_clips_all_metadata.parquet` auf dem SMB-Share.
-
+Modul zum Durchsuchen von Clip-Metadaten: produktive Parquet-Dateisuche (`file`) oder FLOW Search-API (`api`, ausschließlich Cached Search).
 ## Installation
 
-Einmal pro Maschine Flow-API URL linken:
+Für die optionale TOOLBOX-Installation die EditShare-Paketquelle konfigurieren:
 
 ```bash
 pip config set global.extra-index-url https://artifacts.editshare.com/artifactory/api/pypi/editshare-pypi-public/simple
 ```
 
-Danach den Searcher installieren:
-
 ```bash
 # nur Datei (Parquet)
 pip install "searcher @ git+https://github.com/PROGRESS-MAM/ES-Search.git@main"
 
-# mit API
+# mit API-Unterstützung
 pip install "searcher[api] @ git+https://github.com/PROGRESS-MAM/ES-Search.git@main"
-```
 
-Zur Entwicklung am Searcher selbst im Repo-Wurzelverzeichnis:
-
-```bash
+# im Repository für Entwicklung
 pip install -e ".[api]"
 ```
 
 ## Voraussetzungen
 
-Die Datei-Datenquelle mountet den SMB-Share per `net use` und ist damit **Windows-only**.
-Die API-Datenquelle läuft plattformunabhängig. Den Pfad zur Datei kennt das Modul selbst.
-
-`cred.env` für die Datei-Datenquelle:
+`file`: Windows, erreichbarer SMB-Share, Parquet-Datei und `cred.env` mit:
 
 ```env
 SMB_HOST=server ip
@@ -40,10 +30,11 @@ SMB_USER=benutzer
 SMB_PASSWORD=geheim
 ```
 
-`SMB_USER` und `SMB_PASSWORD` sind optional – fehlen sie, wird kein `net use` ausgeführt und der
-Pfad muss bereits erreichbar sein.
+`SMB_USER` und `SMB_PASSWORD` sind optional. Ohne sie muss der Share bereits erreichbar sein.
+Der Datei-Modus mountet den Share bei Bedarf per `net use` und verwendet intern
+`SMB File Exchange/Metadata_File/all_clips_all_metadata.parquet`.
 
-Für die API-Datenquelle zusätzlich:
+`api`: FLOW-Gateway mit gültigem, vertrauenswürdigem TLS-Zertifikat und `cred.env` mit:
 
 ```env
 FLOW_HOST=server ip
@@ -51,105 +42,105 @@ FLOW_USER=benutzer
 FLOW_PASSWORD=geheim
 ```
 
+`FLOW_HOST` darf auch `https://hostname` oder `hostname:port` sein; ohne Port wird 8006 benutzt.
+Die API-Basis ist `https://FLOW_HOST:8006/api/v2/search`. Zugangsdaten niemals im Code ablegen.
+
 ## Verwendung
 
 ```python
 from pathlib import Path
-from toolbox import tb_link_api
 import searcher
 
-def print_progress(message):
-    print(f"\r{message:<80}", end="", flush=True)
-
 cred_path = Path(__file__).parent / "cred.env"
+searcher.link("api", cred_path, on_progress=print)  # oder "file"
 
-searcher.link(
-    "file",                                                 # "file" oder "api"
-    cred_path,                                              # Pfad zur cred.env
-    on_progress=print_progress,                             # optional
-    api_link=lambda: tb_link_api(cred_path, "metadata"),    # nur für "api"
-)
-
-for search in searches:
-    match, progress, error = searcher.find(search)
-
-    if error:
-        print(error)
-        continue
+search = {
+    "name": "Meine Suche",
+    "request_fields": (("CLIPNAME", "contains", "Rivers"),),
+    "return_fields": ("clip_id", "display_name", "userpath"),
+}
+match, progress, error = searcher.find(search)
+if error:
+    print(error)
+else:
+    print(progress)
 ```
 
-`link(...)` einmal aufrufen, danach beliebig viele `find(...)`. Jede Suche läuft immer über den
-kompletten Datenbestand.
+`link(...)` einmal aufrufen, dann beliebig viele `find(...)`. Im API-Modus verwendet `link`
+die FLOW-Zugangsdaten direkt für die Search-API. Das bisherige optionale `api_link`-Argument
+wird aus Kompatibilitätsgründen angenommen, aber ignoriert. Die Metadata-API wird nicht
+mehr abgefragt.
 
-Rückgabe von `find`:
-
-| Wert | Inhalt |
+| Rückgabewert | Bedeutung |
 | --- | --- |
-| `match` | Liste der Ergebniszeilen in Reihenfolge der `return_fields` |
-| `progress` | Statustext |
-| `error` | Text inkl. Traceback oder `None`, Teiltreffer bleiben in `match` |
+| `match` | Ergebniszeilen in Reihenfolge der `return_fields`; im Fehlerfall bereits vollständig bearbeitete Seiten |
+| `progress` | Abschlusstext bei Erfolg |
+| `error` | Fehlertext inkl. Traceback oder `None` |
 
-Ist ein `on_progress`-Callback gesetzt, gibt der Searcher die Abschlussmeldung dort bereits selbst
-aus.
+## Suchdefinition
 
-## Aufbau einer Suche
+`request_fields` besteht aus Tupeln `(feld, operator, wert)` mit `"and"`/`"or"` dazwischen.
+`"and"` und `"or"` werden strikt von links nach rechts, ohne Klammern und Präzedenz,
+ausgewertet: `(A, "and", B, "or", C)` bedeutet `(A and B) or C`.
+`return_fields` bezeichnet die Felder oder Feldpfade, die in der CSV erscheinen sollen;
+Mehrfachwerte werden mit `; ` verbunden.
 
-```python
-searches = [
-    {
-        "name": "My Search",
-        "request_fields": (
-            ("display_backups", "is", "LTO01234"),
-            "and",
-            ("media_space_name", "contains", "search"),
-        ),
-        "return_fields": ("clip_id", "media_space_name", "display_name"),
-    }
-]
-```
+Unterstützte Operatoren: `is`, `is not`, `contains`, `contains not`,
+`starts_with`, `ends_with`, `>`, `<`, `>=`, `<=`, `not >`,
+`not <`, `not >=`, `not <=`. Für `contains` ist auch eine Liste von Werten erlaubt
+(Treffer bei einem beliebigen Eintrag). In `api` muss der jeweilige Operator in den
+`match_options` des indizierten Suchfelds vorkommen; sonst gibt es einen Fehler.
 
-- `name` – für Statusmeldungen und Ergebnisdateinamen
-- `request_fields` – Bedingungen `(feld, operator, wert)`, verknüpft mit `"and"` oder `"or"`
-- `return_fields` – Felder pro Treffer, Mehrfachwerte werden mit `; ` verbunden
+### API: Search Fields und Cached Search
 
-Feldnamen sind unabhängig von Groß-/Kleinschreibung. Ein Name ohne Punkt trifft jedes Feld mit
-diesem Namen, egal wie tief es liegt. Ein Name mit Punkt ist der vollständige Pfad ab der Wurzel;
-findet sich dort nichts, wird zusätzlich unter `custom_metadata` mit Unterstrich statt Punkt
-gesucht (`foo.bar` → `custom_metadata.foo_bar`). Beide Datenquellen lösen Feldnamen gleich auf.
+[Offizielle FLOW Search-API-Dokumentation](https://developers.editshare.com/?urls.primaryName=EditShare%20FLOW%20Search)
 
-### Operatoren
 
-| Operator | Bedeutung |
-| --- | --- |
-| `is` | exakte Übereinstimmung, Groß-/Kleinschreibung ignoriert |
-| `contains` | Teilstring; als Wert ist auch eine Liste erlaubt, Treffer sobald ein Eintrag passt |
-| `>` `<` `>=` `<=` | numerischer Vergleich, nicht konvertierbare Werte werden übersprungen |
+1. Der Searcher ruft `GET /fields?template=LOOKS-PROGRESS&include_filters=true` auf und
+   verwendet diese Feldliste als Index. Suchfelder müssen dort vorhanden und such- oder
+   filterbar sein; akzeptiert werden `fixed_field` oder der Feldname der Vorlage
+   (Groß-/Kleinschreibung sowie Leerzeichen/Unterstrich werden beim Abgleich ignoriert).
+   `sample.py` nutzt als Beispiel die dokumentierten Felder `MEDIA_SPACES_NAMES` und
+   `CLIPNAME`. Welche Felder und Vergleichsoperatoren verfügbar sind, hängt von der
+   tatsächlichen Vorlage und FLOW-Installation ab. Die Liste wird pro `link` gespeichert.
+2. `POST /cached` erstellt eine Cached Search. Die Antwort liefert `cache_id` und die
+   Trefferzahl `results`; **die Zahl wird sofort auf der Konsole gedruckt**.
+   Die API spezifiziert `template` und `include_filters` nur für `/fields`, nicht für
+   `POST /cached`. Es wird keine einfache Suche und keine Metadata-API verwendet.
+3. Ergebnisse werden nur über `GET /cached/{cache_id}` gelesen. Die Paginierung beginnt
+   mit `start=0`, `max_results=100` und setzt `start` jeweils um 100 hoch. Der Abruf
+   wartet mit `wait_for_results=true` auf aufgelöste Datensätze und fragt unvollständige
+   Seiten erneut an derselben Position ab. Es wird erst nach einer vollständigen Seite
+   fortgesetzt. Bei dauerhaft unvollständigen Antworten gibt es einen Fehler statt
+   stillschweigender Lücken. Eine Cached Search läuft serverseitig nach Inaktivität ab.
+4. Die vollständigen Metadatensätze stehen unter `results[].data`. Pro Batch werden nur
+   die `return_fields` für die Ergebniszeilen ausgelesen; es gibt keinen zusätzlichen
+   Abruf einzelner Clips. Der Fortschritt nennt bereits abgerufene, noch abzurufende
+   Ergebnisse und eine geschätzte Restzeit. Mit `on_progress` kommen die Meldungen an
+   den Callback, sonst erscheinen sie auf der Konsole.
 
-Jeder Operator lässt sich negieren: `is not`, `contains not`, `not >`, `not <`, `not >=`, `not <=`.
-Die Negation kehrt das Ergebnis der Bedingung um; ein fehlendes Feld bleibt dabei `False`.
+Optional nimmt `find(search, on_page=save_page)` einen Callback an. Er bekommt nach
+**jeder vollständigen Seite** die extrahierten CSV-Zeilen. `sample.py` schreibt diese
+sofort in eine CSV und synchronisiert sie mit dem Datenträger. Bereits geschriebene
+Seiten bleiben bei späterem Fehler/Abbruch erhalten. Eine solche CSV ist **teilweise**,
+nicht ein vollständiges Ergebnis. `find` gibt die Zeilen weiterhin zusätzlich in `match`
+zurück; bei großen Abfragen benötigt dies entsprechend Speicher.
 
-Ein Feld gilt als Treffer, sobald **einer** seiner Werte passt. Fehlendes oder leeres Feld ist
-`False`. Ein unbekannter Operator ist ebenfalls `False`, ohne Fehlermeldung – Tippfehler zeigen
-sich als „0 Treffer“.
+### Datei-Modus
+Die Parquet-Datei wird blockgruppenweise gelesen. Je Blockgruppe läuft zuerst der
+vektorisierte Vorfilter über die Suchspalten, anschließend die exakte zeilenweise
+Prüfung der Kandidaten. Der Fortschritt nennt Blockgruppe, vorgefilterte Clips und
+Kandidaten. `on_page` wird in diesem Modus nicht verwendet; die CSV-Ausgabe des Beispiels
+bleibt eine einmalige Ausgabe nach erfolgreichem Abschluss.
 
-`"and"` / `"or"` werden strikt von links nach rechts ausgewertet, ohne Klammern und ohne Präzedenz:
-
-```python
-(A, "and", B, "or", C)     #  ->  (A and B) or C
-(A, "or",  B, "and", C)    #  ->  (A or B) and C
-```
-
-## Datei-Datenquelle
-
-Die Parquet-Datei wird blockgruppenweise gelesen. Pro Blockgruppe läuft zuerst ein vektorisierter
-Vorfilter über die Spalten der Bedingungen, nur die Kandidatenzeilen werden anschließend
-zeilenweise exakt geprüft. Das Ergebnis ist identisch zur API-Suche, nur deutlich schneller.
-
-- Der Vorfilter greift nur bei `is` und `contains` auf Textspalten, alle anderen Fälle lassen
-  sämtliche Zeilen als Kandidaten durch.
-- Kommt kein Feld der Suche in der Datei vor, endet die Suche direkt ohne Treffer.
-- Der Fortschritt meldet Blockgruppe, vorgefilterte Clips und Kandidaten; bei der API dagegen
-  den laufenden Clip.
+Hier sind Feldnamen unabhängig von Groß-/Kleinschreibung: Ohne Punkt treffen sie jedes
+entsprechend benannte Feld in beliebiger Tiefe; mit Punkt ist es der vollständige Pfad.
+Falls dieser nicht vorkommt, wird unter `custom_metadata` auch der Name mit Unterstrich
+statt Punkt geprüft (`foo.bar` → `custom_metadata.foo_bar`). Fehlende oder leere Felder
+ergeben `False`, auch bei Negation. Ein unbekannter Operator ergibt `False` statt einer
+Fehlermeldung. Diese lokale Logik gilt **nicht** für den API-Modus: Dort entscheidet die
+Search-API über Treffer und die Semantik fehlender Felder. Der Vorfilter nutzt `is` und
+`contains` auf Textspalten; sonst werden alle Zeilen als Kandidaten geprüft.
 
 ## Beispielimplementierung
 
@@ -157,12 +148,16 @@ zeilenweise exakt geprüft. Das Ergebnis ist identisch zur API-Suche, nur deutli
 python sample.py
 ```
 
-`sample.py` zeigt einen vollständigen Caller mit Konfiguration, Suchdefinitionen, Logging und
-CSV-Ausgabe. Treffer landen in `searches/<name>_result_<zeitstempel>.csv`, Meldungen in
-`searcher.log`. Alle Pfade werden in `sample.py` gesetzt.
+`sample.py` enthält getrennte Beispielsuchen für `file` und `api`. Voreingestellt
+bleibt `metadata_source = "file"`. Für die API setze `metadata_source = "api"` und
+installiere die optionale API-Abhängigkeit. Treffer liegen unter
+`searches/<zeitstempel>_<name>_result.csv`, Meldungen unter `searcher.log`.
+Im API-Modus entsteht die CSV mit Kopfzeile vor der Suche; nach jeder Seite werden
+weitere Treffer gesichert. Im Datei-Modus wird die CSV wie bisher erst zum Schluss
+erzeugt. Änderungen an den Suchfeldern im API-Modus müssen mit `/fields` kompatibel sein.
 
 ## Updates in anderen Repos
 
 ```bash
-pip install --force-reinstall --no-deps "searcher @ git+https://github.com/PROGRESS-MAM/ES-Searcher.git@main"
+pip install --force-reinstall --no-deps "searcher @ git+https://github.com/PROGRESS-MAM/ES-Search.git@main"
 ```

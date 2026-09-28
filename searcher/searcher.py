@@ -6,6 +6,9 @@ from dotenv import load_dotenv
 from pathlib import Path
 import os
 import subprocess
+import time
+from datetime import timedelta
+from urllib.parse import urlsplit
 import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.parquet as pq
@@ -13,7 +16,7 @@ import pyarrow.parquet as pq
 
 # --------- CONFIG ---------
 app_name = "Searcher"
-app_version = "1.2"
+app_version = "1.4"
 
 share_path = Path("SMB File Exchange") / "Metadata_File"
 file_name = "all_clips_all_metadata.parquet"
@@ -32,9 +35,9 @@ casefold_risk_pattern = "[" + "".join(
 link_state: Dict[str, Any] = {
     "metadata_source": None,    # "api" oder "file"
     "cred_path": None,          # vom Caller uebergeben
-    "api_link": None,           # Callable des Callers, liefert die API-Instanz
     "on_progress": None,        # optionaler Callback(str)
-    "api": None,                # verbundene API-Instanz
+    "api": None,                # Search-API-Session
+    "search_fields": None,      # Suchfelder der gewaehlten Vorlage
     "file_full_path": None,     # gemounteter File-Pfad
 }
 
@@ -468,39 +471,216 @@ def eval_requests(metadata: dict, requests: tuple) -> bool:
     return bool(fold_logic(parts, bool_logic))
 
 
+# --------- FUNC API SEARCH ---------
+search_template = "LOOKS-PROGRESS"
+page_size = 100
+api_operators = {
+    "is": "EQUAL_TO", "is not": "IS_NOT_EQUAL_TO",
+    "contains": "CONTAINS", "contains not": "DOES_NOT_CONTAIN",
+    "starts_with": "BEGINS_WITH", "ends_with": "ENDS_WITH",
+    ">": "GREATER_THAN", "<": "LESS_THAN",
+    ">=": "GREATER_THAN_EQUAL_TO", "<=": "LESS_THAN_EQUAL_TO",
+    "not >": "LESS_THAN_EQUAL_TO", "not <": "GREATER_THAN_EQUAL_TO",
+    "not >=": "LESS_THAN", "not <=": "GREATER_THAN",
+}
+
+
+def _search_session(cred_path):
+    import requests
+
+    if not cred_path or not Path(cred_path).is_file():
+        raise FileNotFoundError("Fuer 'api' wird eine vorhandene cred.env mit FLOW_HOST, FLOW_USER und FLOW_PASSWORD benoetigt.")
+    load_dotenv(cred_path, override=True)
+    host = os.environ.get("FLOW_HOST", "").strip()
+    user = os.environ.get("FLOW_USER")
+    password = os.environ.get("FLOW_PASSWORD")
+    if not all((host, user, password)):
+        raise ValueError("FLOW_HOST, FLOW_USER und FLOW_PASSWORD muessen in cred.env gesetzt sein.")
+    url = urlsplit(host if "://" in host else f"https://{host}")
+    if url.scheme not in ("https", "http") or not url.hostname or url.username or url.password or url.path not in ("", "/") or url.query or url.fragment:
+        raise ValueError("FLOW_HOST muss ein Hostname oder eine Gateway-URL ohne Pfad und Zugangsdaten sein.")
+    base_url = f"{url.scheme}://{url.netloc if url.port else url.netloc + ':8006'}/api/v2/search"
+    session = requests.Session()
+    session.auth = (user, password)
+    session.headers.update({"Accept": "application/json"})
+    return session, base_url
+
+
+def _api_json(method, path, **kwargs):
+    session, base_url = link_state["api"]
+    response = session.request(method, base_url + path, timeout=45, **kwargs)
+    response.raise_for_status()
+    data = response.json()
+    if not isinstance(data, (dict, list)):
+        raise ValueError(f"Unerwartete Antwort der Search-API bei {path}.")
+    return data
+
+
+def _field_key(name):
+    return name.casefold().replace(" ", "_")
+
+
+def _search_fields():
+    fields = link_state.get("search_fields")
+    if fields is None:
+        fields = _api_json("GET", "/fields", params={"template": search_template, "include_filters": "true"})
+        if not isinstance(fields, list):
+            raise ValueError("Search Fields liefert keine Feldliste.")
+        link_state["search_fields"] = fields
+    return fields
+
+
+def _resolve_search_field(name, operator):
+    if not isinstance(name, str) or not name.strip():
+        raise ValueError("Ein Suchfeld muss als Feldname angegeben sein.")
+    key = _field_key(name)
+    candidates = [field for field in _search_fields() if isinstance(field, dict) and
+                  any(_field_key(alias) == key for alias in
+                      (field.get("fixed_field"), field.get("custom_field"), field.get("name"))
+                      if isinstance(alias, str))]
+    if not candidates:
+        raise ValueError(f"Suchfeld '{name}' fehlt im Search-Fields-Index der Vorlage {search_template}.")
+    if len(candidates) != 1:
+        raise ValueError(f"Suchfeld '{name}' ist mehrdeutig; bitte fixed_field verwenden.")
+    field = candidates[0]
+    if not (field.get("can_search") or field.get("can_filter")):
+        raise ValueError(f"Suchfeld '{name}' ist weder suchbar noch filterbar.")
+    match = api_operators.get(operator)
+    if not match or match not in field.get("match_options", []):
+        raise ValueError(f"Operator '{operator}' ist fuer Suchfeld '{name}' nicht verfuegbar; erlaubt: {field.get('match_options', [])}.")
+    return (field.get("name") if field.get("custom_field") else field.get("fixed_field") or field.get("name")), match
+
+
+def _search_node(request_fields):
+    if not isinstance(request_fields, (list, tuple)) or not request_fields or len(request_fields) % 2 == 0:
+        raise ValueError("request_fields muss aus Bedingungen mit 'and'/'or' dazwischen bestehen.")
+
+    def condition(item):
+        if not isinstance(item, tuple) or len(item) != 3:
+            raise ValueError("Bedingung muss (feld, operator, wert) sein.")
+        name, operator, value = item
+        field, match = _resolve_search_field(name, operator)
+        if operator == "contains" and isinstance(value, (list, tuple)):
+            if not value:
+                raise ValueError("Eine 'contains'-Liste darf nicht leer sein.")
+            filters = [{"field": field, "match": match, "search": item} for item in value]
+            if any(not isinstance(item, (str, int, float)) or isinstance(item, bool) for item in value):
+                raise ValueError("Search-API-Suchwerte muessen Text oder Zahlen sein.")
+            return {"combine": "MATCH_ANY", "filters": filters}
+        if not isinstance(value, (str, int, float)) or isinstance(value, bool):
+            raise ValueError("Search-API-Suchwerte muessen Text oder Zahlen sein.")
+        return {"combine": "MATCH_ALL", "filters": [{"field": field, "match": match, "search": value}]}
+
+    node = condition(request_fields[0])
+    for index in range(1, len(request_fields), 2):
+        logic = request_fields[index]
+        if logic not in ("and", "or"):
+            raise ValueError("Zwischen Bedingungen ist nur 'and' oder 'or' erlaubt.")
+        node = {"combine": "MATCH_ALL" if logic == "and" else "MATCH_ANY",
+                "children": [node, condition(request_fields[index + 1])]}
+    return node
+
+
+def _api_progress(message):
+    if callable(link_state.get("on_progress")):
+        report_progress(message)
+    else:
+        print(message, flush=True)
+
+
+def _cached_page(cache_id, start, total):
+    expected = min(page_size, total - start)
+    deadline = time.monotonic() + 600
+    while True:
+        page = _api_json("GET", f"/cached/{cache_id}", params={
+            "start": start, "max_results": page_size, "wait_for_results": "true", "wait_timeout": 30})
+        if not isinstance(page, dict) or not isinstance(page.get("results"), list):
+            raise ValueError(f"Cached Search liefert keine Ergebnisseite ab Position {start}.")
+        if page.get("total") != total or page.get("start") != start:
+            raise ValueError(f"Cached Search meldet ab Position {start} eine abweichende Gesamtzahl oder Startposition.")
+        results = page["results"]
+        if len(results) == expected:
+            return results
+        if len(results) > expected or page.get("complete") is True:
+            raise ValueError(f"Cached Search liefert ab Position {start} nur {len(results)} von {expected} Ergebnissen.")
+        if time.monotonic() >= deadline:
+            raise TimeoutError(f"Cached Search ab Position {start} nicht vollstaendig aufgeloest; bisherigen CSV-Stand behalten.")
+        _api_progress(f"Cached Search: Seite ab {start} wird aufgeloest, {total - start} Ergebnisse noch abzurufen")
+        time.sleep(1)
+
+
+def _find_api(search, on_page):
+    matches = []
+    progress = ""
+    try:
+        node = _search_node(search["request_fields"])
+        fields = search.get("return_fields", ())
+        if not isinstance(fields, (list, tuple)) or any(not isinstance(field, str) for field in fields):
+            raise ValueError("return_fields muss eine Liste von Feldnamen sein.")
+        created = _api_json("POST", "/cached", json=node)
+        if not isinstance(created, dict) or not isinstance(created.get("cache_id"), str):
+            raise ValueError("Cached Search liefert keine Search-ID.")
+        total = created.get("results")
+        if not isinstance(total, int) or isinstance(total, bool) or total < 0:
+            raise ValueError("Cached Search liefert keine gueltige Trefferzahl.")
+        cache_id = created["cache_id"]
+        print(f"Cached Search: {total} Ergebnisse (Search-ID {cache_id})", flush=True)
+        started = time.monotonic()
+        for start in range(0, total, page_size):
+            batch = _cached_page(cache_id, start, total)
+            page_rows = []
+            for result in batch:
+                if not isinstance(result, dict) or not isinstance(result.get("data"), dict):
+                    raise ValueError(f"Cached Search enthaelt ab Position {start} keinen vollstaendigen Datensatz.")
+                data = result["data"]
+                page_rows.append(["; ".join(str(value) for value in find_all_field_values(data, field))
+                                  for field in fields])
+            if on_page is not None:
+                on_page(page_rows)
+            matches.extend(page_rows)
+            fetched = start + len(batch)
+            remaining = total - fetched
+            eta = timedelta(seconds=round((time.monotonic() - started) / fetched * remaining))
+            _api_progress(f"Cached Search: {fetched}/{total} abgerufen, {remaining} verbleibend, ca. {eta} Restzeit, {len(matches)} Treffer")
+        progress = f"Suche '{search.get('name', '')}' beendet, {total} Ergebnisse abgerufen, {len(matches)} Treffer gefunden."
+        _api_progress(progress)
+        return matches, progress, None
+    except Exception as exc:
+        return matches, progress, f"Unhandled error in searcher: {exc}\n{traceback.format_exc()}"
+
+
 # --------- MAIN ---------
 def link(metadata_source: str = "file", cred_path: Union[str, Path] = None,
          on_progress: Optional[Callable[[str], None]] = None,
          api_link: Optional[Callable[[], Any]] = None) -> None:
 
     """Verbindet die Datenquelle. Den Pfad kennt das Modul selbst.
-    Fuer metadata_source 'api' liefert der Caller api_link mit z.B.
-    lambda: tb_link_api(cred_path, 'metadata')."""
+    Fuer metadata_source 'api' werden FLOW_HOST, FLOW_USER und FLOW_PASSWORD
+    aus cred.env fuer die FLOW Search-API verwendet. api_link bleibt als
+    ignoriertes Kompatibilitaetsargument erhalten."""
 
     if metadata_source not in ("api", "file"):
         raise ValueError(f"Unbekannte Datenquelle '{metadata_source}', erlaubt: 'api', 'file'.")
 
     link_state["metadata_source"] = metadata_source
     link_state["cred_path"] = Path(cred_path) if cred_path else None
-    link_state["api_link"] = api_link
     link_state["on_progress"] = on_progress
     link_state["api"] = None
+    link_state["search_fields"] = None
     link_state["file_full_path"] = None
 
     report_progress(f"Datenquelle '{metadata_source}' wird verbunden")
 
     if metadata_source == "api":
-        if not callable(api_link):
-            raise ValueError("Fuer die Datenquelle 'api' wird api_link benoetigt, "
-                             "z.B. api_link=lambda: tb_link_api(cred_path, 'metadata').")
-        link_state["api"] = api_link()
+        link_state["api"] = _search_session(link_state["cred_path"])
     else:
         link_state["file_full_path"] = mount_share()
 
 
-def find(search: dict = None) -> Tuple[List[List[str]], str, Optional[str]]:
+def find(search: dict = None, on_page: Optional[Callable[[List[List[str]]], None]] = None) -> Tuple[List[List[str]], str, Optional[str]]:
     """Durchsucht die verlinkte Datenquelle.
-    Rueckgabe: match (Liste der Ergebniszeilen), progress (Statustext), error (Text oder None)."""
+    Rueckgabe: match (Liste der Ergebniszeilen), progress (Statustext), error (Text oder None).
+    on_page erhaelt im API-Modus nach jeder vollstaendigen Seite die Ergebniszeilen."""
     matches: List[List[str]] = []
     progress = ""
 
@@ -511,6 +691,9 @@ def find(search: dict = None) -> Tuple[List[List[str]], str, Optional[str]]:
         if not search:
             raise ValueError("Keine Suche uebergeben.")
 
+        if metadata_source == "api":
+            return _find_api(search, on_page)
+
         fields = tuple(dict.fromkeys(
             [item[0] for item in search["request_fields"] if isinstance(item, tuple)]
             + list(search.get("return_fields", []))
@@ -518,19 +701,11 @@ def find(search: dict = None) -> Tuple[List[List[str]], str, Optional[str]]:
 
         source = None
 
-        if metadata_source == "api":
-            api = link_state["api"]
-            clip_ids = api.clips(offset=0, limit=api.numClips())
-            clip_stream = (api.getClip(clip_id) for clip_id in clip_ids)
-            total = len(clip_ids)
-            step = 1
-
-        else:
-            source = ParquetMetadataSource(link_state["file_full_path"], fields,
-                                           search["request_fields"])
-            clip_stream = source.iter_clips()
-            total = None
-            step = 0
+        source = ParquetMetadataSource(link_state["file_full_path"], fields,
+                                       search["request_fields"])
+        clip_stream = source.iter_clips()
+        total = None
+        step = 0
 
         clip_index = 0
         report_progress(f"Suche '{search.get('name', '')}' gestartet")
