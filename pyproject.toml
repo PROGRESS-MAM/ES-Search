@@ -17,7 +17,6 @@ dependencies = [
 
 [project.optional-dependencies]
 api = [
-    "requests>=2.31",
     "toolbox @ git+https://github.com/PROGRESS-MAM/TOOLBOX.git@main",
 ]
 

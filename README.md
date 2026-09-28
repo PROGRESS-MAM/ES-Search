@@ -34,7 +34,7 @@ SMB_PASSWORD=geheim
 Der Datei-Modus mountet den Share bei Bedarf per `net use` und verwendet intern
 `SMB File Exchange/Metadata_File/all_clips_all_metadata.parquet`.
 
-`api`: FLOW-Gateway mit gültigem, vertrauenswürdigem TLS-Zertifikat und `cred.env` mit:
+`api`: FLOW-Gateway und installierte TOOLBOX mit FLOW Search-Wrapper und `cred.env` mit:
 
 ```env
 FLOW_HOST=server ip
@@ -42,8 +42,10 @@ FLOW_USER=benutzer
 FLOW_PASSWORD=geheim
 ```
 
-`FLOW_HOST` darf auch `https://hostname` oder `hostname:port` sein; ohne Port wird 8006 benutzt.
-Die API-Basis ist `https://FLOW_HOST:8006/api/v2/search`. Zugangsdaten niemals im Code ablegen.
+`FLOW_HOST` ist der Hostname bzw. die IP des FLOW-Gateways; der Search-Wrapper verbindet sich
+über Port 8006. Zugangsdaten niemals im Code ablegen. Achtung: Die hier bereitgestellte
+Version des FLOW-Wrappers deaktiviert die TLS-Zertifikatsprüfung in der Verbindung;
+setze sie nur in einer entsprechend abgesicherten Umgebung ein.
 
 ## Verwendung
 
@@ -52,12 +54,16 @@ from pathlib import Path
 import searcher
 
 cred_path = Path(__file__).parent / "cred.env"
-searcher.link("api", cred_path, on_progress=print)  # oder "file"
+from toolbox import tb_link_api
+
+searcher.link("api", cred_path, on_progress=print,
+              api_link=lambda: tb_link_api(cred_path, "search"))  # oder "file"
 
 search = {
     "name": "Meine Suche",
-    "request_fields": (("CLIPNAME", "contains", "Rivers"),),
+    "request_fields": (("media_space_name", "is", "Oury Jalloh Render"),),
     "return_fields": ("clip_id", "display_name", "userpath"),
+    "api_fields": {"media_space_name": "MEDIA_SPACES_NAMES"},
 }
 match, progress, error = searcher.find(search)
 if error:
@@ -67,9 +73,10 @@ else:
 ```
 
 `link(...)` einmal aufrufen, dann beliebig viele `find(...)`. Im API-Modus verwendet `link`
-die FLOW-Zugangsdaten direkt für die Search-API. Das bisherige optionale `api_link`-Argument
-wird aus Kompatibilitätsgründen angenommen, aber ignoriert. Die Metadata-API wird nicht
-mehr abgefragt.
+`tb_link_api(cred_path, "search")` der TOOLBOX und damit den gelieferten FLOW Search-Wrapper.
+`api_link` ist ein optionaler Callback; fehlt er, stellt der Searcher dieselbe TOOLBOX-Verbindung
+selbst her. Die Metadata-API wird nicht verwendet. Es wird keine direkte HTTP-Session im
+Searcher angelegt.
 
 | Rückgabewert | Bedeutung |
 | --- | --- |
@@ -79,19 +86,25 @@ mehr abgefragt.
 
 ## Suchdefinition
 
-`request_fields` besteht aus Tupeln `(feld, operator, wert)` mit `"and"`/`"or"` dazwischen.
+**Eine** Suchdefinition gilt für beide Datenquellen. `request_fields` besteht aus Tupeln
+`(feld, operator, wert)` mit `"and"`/`"or"` dazwischen.
 `"and"` und `"or"` werden strikt von links nach rechts, ohne Klammern und Präzedenz,
 ausgewertet: `(A, "and", B, "or", C)` bedeutet `(A and B) or C`.
 `return_fields` bezeichnet die Felder oder Feldpfade, die in der CSV erscheinen sollen;
-Mehrfachwerte werden mit `; ` verbunden.
+Mehrfachwerte werden mit `; ` verbunden. Stimmen die lokalen Metadatenfeldnamen nicht mit
+den Search Fields der API überein, ordnet `api_fields` sie innerhalb derselben Suche
+zu, z. B. `{"media_space_name": "MEDIA_SPACES_NAMES"}`. Im Datei-Modus ändert diese
+Zuordnung weder die Suche noch die Ausgabe. Im Beispiel wird `userpath` ausschließlich
+für die Dateiendungssuche auf das API-Feld `CLIPNAME` abgebildet; prüfe bei anderen
+Suchwerten, ob die beiden Felder fachlich dieselbe Bedeutung haben.
 
-Unterstützte Operatoren: `is`, `is not`, `contains`, `contains not`,
+Die Operatoren stehen in **einer gemeinsamen Zuordnung** für beide Modi. Unterstützt: `is`, `is not`, `contains`, `contains not`,
 `starts_with`, `ends_with`, `>`, `<`, `>=`, `<=`, `not >`,
 `not <`, `not >=`, `not <=`. Für `contains` ist auch eine Liste von Werten erlaubt
 (Treffer bei einem beliebigen Eintrag). In `api` muss der jeweilige Operator in den
 `match_options` des indizierten Suchfelds vorkommen; sonst gibt es einen Fehler.
 
-### API: Search Fields und Cached Search
+### API: Search Fields und Cached Search (Searcher 1.4)
 
 [Offizielle FLOW Search-API-Dokumentation](https://developers.editshare.com/?urls.primaryName=EditShare%20FLOW%20Search)
 
@@ -103,15 +116,22 @@ Unterstützte Operatoren: `is`, `is not`, `contains`, `contains not`,
    `sample.py` nutzt als Beispiel die dokumentierten Felder `MEDIA_SPACES_NAMES` und
    `CLIPNAME`. Welche Felder und Vergleichsoperatoren verfügbar sind, hängt von der
    tatsächlichen Vorlage und FLOW-Installation ab. Die Liste wird pro `link` gespeichert.
-2. `POST /cached` erstellt eine Cached Search. Die Antwort liefert `cache_id` und die
+2. Über die geerbte `postThatReturnsObj("/search/cached", suchknoten)`-Methode des FLOW
+   Search-Wrappers wird eine Cached Search erstellt. Dessen `createSearch` übermittelt
+   keinen JSON-Suchknoten und wird daher hier nicht benutzt. Die Suche wird mit dem
+   gemeinsamen Operator-Katalog und derselben Links-nach-rechts-Verknüpfung aufgebaut.
+   Die Antwort liefert `cache_id` und die
    Trefferzahl `results`; **die Zahl wird sofort auf der Konsole gedruckt**.
    Die API spezifiziert `template` und `include_filters` nur für `/fields`, nicht für
    `POST /cached`. Es wird keine einfache Suche und keine Metadata-API verwendet.
-3. Ergebnisse werden nur über `GET /cached/{cache_id}` gelesen. Die Paginierung beginnt
+3. Ergebnisse werden nur über `searchResults(cache_id, start, 100)` des FLOW
+   Search-Wrappers aus `GET /cached/{cache_id}` gelesen. Die Paginierung beginnt
    mit `start=0`, `max_results=100` und setzt `start` jeweils um 100 hoch. Der Abruf
-   wartet mit `wait_for_results=true` auf aufgelöste Datensätze und fragt unvollständige
-   Seiten erneut an derselben Position ab. Es wird erst nach einer vollständigen Seite
-   fortgesetzt. Bei dauerhaft unvollständigen Antworten gibt es einen Fehler statt
+   fragt unvollständige Seiten erneut an derselben Position ab. Der mitgelieferte
+   Wrapper bietet bei `searchResults` keinen `wait_for_results`-Parameter. Deshalb wird
+   die Seite so lange erneut gelesen, bis alle 100 (bei der letzten Seite entsprechend
+   weniger) vollständigen Datensätze vorliegen, höchstens zehn Minuten lang. Erst danach wird
+   die nächste Seite gelesen. Bei dauerhaft unvollständigen Antworten gibt es einen Fehler statt
    stillschweigender Lücken. Eine Cached Search läuft serverseitig nach Inaktivität ab.
 4. Die vollständigen Metadatensätze stehen unter `results[].data`. Pro Batch werden nur
    die `return_fields` für die Ergebniszeilen ausgelesen; es gibt keinen zusätzlichen
@@ -148,7 +168,8 @@ Search-API über Treffer und die Semantik fehlender Felder. Der Vorfilter nutzt 
 python sample.py
 ```
 
-`sample.py` enthält getrennte Beispielsuchen für `file` und `api`. Voreingestellt
+`sample.py` enthält eine gemeinsame Suchliste mit optionaler `api_fields`-Zuordnung.
+Voreingestellt
 bleibt `metadata_source = "file"`. Für die API setze `metadata_source = "api"` und
 installiere die optionale API-Abhängigkeit. Treffer liegen unter
 `searches/<zeitstempel>_<name>_result.csv`, Meldungen unter `searcher.log`.

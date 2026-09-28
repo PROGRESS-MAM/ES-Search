@@ -1,7 +1,7 @@
 ######################## SAMPLE IMPLEMENTATION ###############################
 
 # --------- IMPORTS ---------
-from toolbox import tb_write_log, tb_make_path
+from toolbox import tb_link_api, tb_write_log, tb_make_path
 import searcher
 import datetime
 import traceback
@@ -33,19 +33,7 @@ searches = [
             ("userpath", "ends_with", ".aep"),
         ),
         "return_fields": ("clip_id", "media_space_name", "userpath"),
-    }
-]
-
-# --------- API SEARCHES ---------
-api_searches = [
-    {
-        "name": "AEP-Dateien im Mediaspace Oury Jalloh Render",
-        "request_fields": (
-            ("MEDIA_SPACES_NAMES", "is", "Oury Jalloh Render"),
-            "and",
-            ("CLIPNAME", "ends_with", ".aep"),
-        ),
-        "return_fields": ("clip_id", "media_space_name", "userpath"),
+        "api_fields": {"media_space_name": "MEDIA_SPACES_NAMES", "userpath": "CLIPNAME"},
     }
 ]
 
@@ -57,9 +45,10 @@ def main() -> None:
     def print_progress(message: str) -> None:
         print(f"\r{message:<80}", end="", flush=True)
 
-    searcher.link(metadata_source, cred_path, on_progress=print_progress)
+    searcher.link(metadata_source, cred_path, on_progress=print_progress,
+                  api_link=(lambda: tb_link_api(cred_path, "search")) if metadata_source == "api" else None)
 
-    for search in (api_searches if metadata_source == "api" else searches):
+    for search in searches:
         if metadata_source == "api":
             timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
             result_file = tb_make_path(base_path, result_folder,
