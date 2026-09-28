@@ -44,8 +44,10 @@ def main() -> None:
 
     def print_progress(message: str) -> None:
         nonlocal last_width
-        print(f"\r{message}{' ' * max(0, last_width - len(message))}", end="", flush=True)
-        last_width = len(message)
+        is_uuid = message.startswith("Search-UUID: ")
+        print(f"\r{message}{' ' * max(0, last_width - len(message))}",
+              end="\n" if is_uuid else "", flush=True)
+        last_width = 0 if is_uuid else len(message)
 
     searcher.link(metadata_source, cred_path, on_progress=print_progress,
                   api_link=(lambda: tb_link_api(cred_path, "search")) if metadata_source == "api" else None)

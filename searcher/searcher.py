@@ -17,7 +17,7 @@ import pyarrow.parquet as pq
 
 # --------- CONFIG ---------
 app_name = "Searcher"
-app_version = "1.5.1"
+app_version = "1.5.2"
 
 share_path = Path("SMB File Exchange") / "Metadata_File"
 file_name = "all_clips_all_metadata.parquet"
@@ -619,14 +619,17 @@ def _cached_page(cache_id, start, total, started):
         if page.get("total") != total or page.get("start") != start:
             raise ValueError(f"Cached Search meldet ab Position {start} eine abweichende Gesamtzahl oder Startposition.")
         results = page["results"]
-        if len(results) == expected and all(isinstance(item, dict) and
-                                             isinstance(item.get("data"), dict) for item in results):
+        if len(results) > expected or not isinstance(page.get("complete"), bool):
+            raise ValueError(f"Cached Search liefert ab Position {start} eine ungueltige Ergebnisseite.")
+        if page["complete"]:
+            if len(results) != expected or not all(
+                    isinstance(item, dict) and isinstance(item.get("data"), dict)
+                    for item in results):
+                raise ValueError(f"Cached Search liefert ab Position {start} keine {expected} vollstaendigen Datensaetze.")
             return [item["data"] for item in results]
-        if len(results) > expected or page.get("complete") is True:
-            raise ValueError(f"Cached Search liefert ab Position {start} keine {expected} vollstaendigen Datensaetze.")
         if time.monotonic() >= deadline:
             raise TimeoutError(f"Cached Search ab Position {start} nicht vollstaendig aufgeloest; bisherigen CSV-Stand behalten.")
-        _api_progress(_cached_progress(start, total, page_number, started, "Seite wird aufgeloest"))
+        _api_progress(_cached_progress(start, total, page_number, started, "warte auf vollstaendige Suche"))
         time.sleep(1)
 
 
@@ -641,11 +644,26 @@ def _api_batches(search):
     if not isinstance(total, int) or isinstance(total, bool) or total < 0:
         raise ValueError("Cached Search liefert keine gueltige Trefferzahl.")
     cache_id = created["cache_id"]
-    _api_progress(f"Cached Search: {total} Ergebnisse (Search-ID {cache_id})")
+    _api_progress(f"Search-UUID: {cache_id}")
     started = time.monotonic()
     _api_progress(_cached_progress(0, total, 0, started))
     for start in range(0, total, page_size):
         yield _cached_page(cache_id, start, total, started), total, started
+
+
+def _check_unique_page(batch, seen):
+    page_keys = set()
+    for metadata in batch:
+        identity = next(((field, str(metadata[field])) for field in
+                         ("clip_id", "marker_id", "sequence_id", "file_id", "asset_id")
+                         if metadata.get(field) is not None), None)
+        key = identity or ("data", json.dumps(metadata, sort_keys=True, ensure_ascii=False, default=str))
+        if key in seen or key in page_keys:
+            label = f"{key[0]}={key[1]}" if identity else "identische Metadaten"
+            raise ValueError(f"Cached Search liefert einen doppelten Treffer ({label}). "
+                             "Abruf abgebrochen; bisherigen CSV-Stand als unvollstaendig behandeln.")
+        page_keys.add(key)
+    seen.update(page_keys)
 
 
 def _result_row(metadata, fields):
@@ -715,9 +733,12 @@ def find(search: dict = None, on_page: Optional[Callable[[List[List[str]]], None
             batches = _api_batches(search)
 
         checked = 0
+        seen_results = set()
         start_message = f"Suche '{search.get('name', '')}' gestartet"
         (_api_progress if mode == "api" else report_progress)(start_message)
         for batch, total, started in batches:
+            if mode == "api":
+                _check_unique_page(batch, seen_results)
             rows = [_result_row(row, resolved_fields) for row in batch
                     if mode == "api" or eval_requests(row, request_fields)]
             if mode == "api" and on_page is not None:
@@ -730,6 +751,8 @@ def find(search: dict = None, on_page: Optional[Callable[[List[List[str]]], None
 
         if source is not None:
             checked = source.rows_scanned
+        elif checked != len(seen_results):
+            raise ValueError("Cached Search: Ergebniszahl und eindeutige Treffer stimmen nicht ueberein.")
         progress = (f"Suche '{search.get('name', '')}' beendet, {checked:_} Clips geprueft, "
                     f"{len(matches):_} Treffer gefunden.").replace("_", ".") if mode == "file" else (
                     f"Suche '{search.get('name', '')}' beendet, {checked} Ergebnisse abgerufen, {len(matches)} Treffer gefunden.")
