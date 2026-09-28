@@ -17,7 +17,7 @@ import pyarrow.parquet as pq
 
 # --------- CONFIG ---------
 app_name = "Searcher"
-app_version = "1.5.2"
+app_version = "1.5.3"
 
 share_path = Path("SMB File Exchange") / "Metadata_File"
 file_name = "all_clips_all_metadata.parquet"
@@ -649,6 +649,12 @@ def _api_batches(search):
     _api_progress(_cached_progress(0, total, 0, started))
     for start in range(0, total, page_size):
         yield _cached_page(cache_id, start, total, started), total, started
+    try:
+        deleted = _api_response("Cached Search loeschen", lambda: api.deleteSearch(cache_id))
+    except Exception as exc:
+        raise RuntimeError(f"Alle Ergebnisse abgerufen, aber Cached Search {cache_id} konnte nicht geloescht werden: {exc}") from exc
+    if deleted is not True:
+        raise RuntimeError(f"Alle Ergebnisse abgerufen, aber Cached Search {cache_id} hat die Loeschung nicht bestaetigt.")
 
 
 def _check_unique_page(batch, seen):
@@ -755,7 +761,7 @@ def find(search: dict = None, on_page: Optional[Callable[[List[List[str]]], None
             raise ValueError("Cached Search: Ergebniszahl und eindeutige Treffer stimmen nicht ueberein.")
         progress = (f"Suche '{search.get('name', '')}' beendet, {checked:_} Clips geprueft, "
                     f"{len(matches):_} Treffer gefunden.").replace("_", ".") if mode == "file" else (
-                    f"Suche '{search.get('name', '')}' beendet, {checked} Ergebnisse abgerufen, {len(matches)} Treffer gefunden.")
+                    f"Suche '{search.get('name', '')}' beendet, {checked} Ergebnisse abgerufen, {len(matches)} Treffer gefunden. Cached Search geloescht.")
         if mode == "api":
             _api_progress(progress)
         else:
