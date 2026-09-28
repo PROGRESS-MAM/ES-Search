@@ -20,7 +20,7 @@ cred_path = base_path / "cred.env"
 result_folder = "searches"
 
 
-metadata_source = "file"    # "file" (Parquet auf dem Share) oder "api"
+metadata_source = "api"    # "file" (Parquet auf dem Share) oder "api"
 
 
 # --------- SEARCHES ---------
@@ -28,11 +28,11 @@ searches = [
     {
         "name": "AEP-Dateien im Mediaspace Oury Jalloh Render",
         "request_fields": (
-            ("media_space_name", "is", "Oury Jalloh Render"),
+            ("Media Space", "is", "Oury Jalloh Render"),
             "and",
-            ("userpath", "ends_with", ".aep"),
+            ("FILENAME", "ends_with", ".aep"),
         ),
-        "return_fields": ("clip_id", "media_space_name", "userpath"),
+        "return_fields": ("clip_id", "userpath"),
     }
 ]
 

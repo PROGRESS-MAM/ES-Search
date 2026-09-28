@@ -1,0 +1,839 @@
+FELDINDEX – API und PARQUET
+
+Die erste Bezeichnung nach dem Tag ist der Name für request_fields.
+Bei API-Feldern steht nach " | " ein abweichender Anzeigename oder eine alternative Kennung.
+Bei verschachtelten PARQUET-Feldern wurden []-Markierungen des Schemas ausgelassen.
+Reine PARQUET-Strukturknoten sind nicht aufgeführt.
+
+API-Basic: 83  |  API-Custom: 233  |  PARQUET-Basic: 235  |  PARQUET-Custom: 279
+
+[API-Custom] 000 Checked for Upload | CUSTOM_field_236
+[API-Custom] 000a Upload Permission | CUSTOM_field_249
+[API-Custom] 001 Identifier | CUSTOM_field_50
+[API-Custom] 002 Identifier Exists | CUSTOM_field_51
+[API-Custom] 003 Identifier Original | CUSTOM_field_52
+[API-Custom] 003a DEFA Identifier | CUSTOM_field_220
+[API-Custom] 003b Mapping Identifier | CUSTOM_field_248
+[API-Custom] 004 Identifier Can / Box / Tape / Old Identifier | CUSTOM_field_53
+[API-Custom] 005 User Group | CUSTOM_field_54
+[API-Custom] 006 Source PROGRESS | CUSTOM_field_55
+[API-Custom] 006a Source Private | CUSTOM_field_244
+[API-Custom] 006b Source External Archive | CUSTOM_field_250
+[API-Custom] 007 Collection PROGRESS | CUSTOM_field_56
+[API-Custom] 008 Collection External Archive | CUSTOM_field_57
+[API-Custom] 009 Upload Veritone | CUSTOM_field_58
+[API-Custom] 009a Progress Archive URL | CUSTOM_field_266
+[API-Custom] 009b Veritone Asset ID | CUSTOM_field_267
+[API-Custom] 009c Veritone Name | CUSTOM_field_268
+[API-Custom] 009d Veritone Clipname | CUSTOM_field_269
+[API-Custom] 009e FiMu URL | CUSTOM_field_304
+[API-Custom] 010 Upload Date Veritone | CUSTOM_field_237
+[API-Custom] 010 Upload Date Veritone (DATE) | CUSTOM_field_59
+[API-Custom] 011 Modified Date | CUSTOM_field_60
+[API-Custom] 012 Modified Date DEFA | CUSTOM_field_61
+[API-Custom] 012 Modified Date DEFA (DATE) | CUSTOM_field_296
+[API-Custom] 013 User | CUSTOM_field_62
+[API-Custom] 014 Title Original | CUSTOM_field_63
+[API-Custom] 015 Title German | CUSTOM_field_64
+[API-Custom] 016 Title English | CUSTOM_field_65
+[API-Custom] 017 Title French | CUSTOM_field_66
+[API-Custom] 018 Title Alternative | CUSTOM_field_67
+[API-Custom] 019 Title Series Original | CUSTOM_field_68
+[API-Custom] 020 Title Episode Original | CUSTOM_field_69
+[API-Custom] 021 Title Series German | CUSTOM_field_70
+[API-Custom] 022 Title Episode German | CUSTOM_field_71
+[API-Custom] 023 Title Series English | CUSTOM_field_72
+[API-Custom] 024 Title Episode English | CUSTOM_field_73
+[API-Custom] 025 Title Series French | CUSTOM_field_74
+[API-Custom] 026 Title Episode French | CUSTOM_field_75
+[API-Custom] 027 Episode Number | CUSTOM_field_198
+[API-Custom] 028 Edit Version | CUSTOM_field_77
+[API-Custom] 028a Editing Status | CUSTOM_field_230
+[API-Custom] 029a Language Audio German | CUSTOM_field_222
+[API-Custom] 029b Language Audio English | CUSTOM_field_78
+[API-Custom] 029c Language Audio French | CUSTOM_field_223
+[API-Custom] 030a Language Text German | CUSTOM_field_224
+[API-Custom] 030b Language Text English | CUSTOM_field_79
+[API-Custom] 030c Language Text French | CUSTOM_field_225
+[API-Custom] 031a Main Language German | CUSTOM_field_226
+[API-Custom] 031b Main Language English | CUSTOM_field_80
+[API-Custom] 031c Main Language French | CUSTOM_field_227
+[API-Custom] 032 Subtitle | CUSTOM_field_81
+[API-Custom] 033a Subtitle Language German | CUSTOM_field_228
+[API-Custom] 033b Subtitle Language English | CUSTOM_field_82
+[API-Custom] 033c Subtitle Language French | CUSTOM_field_229
+[API-Custom] 034 Narration | CUSTOM_field_83
+[API-Custom] 035 IT Version | CUSTOM_field_84
+[API-Custom] 036 Synchronisation | CUSTOM_field_85
+[API-Custom] 037 Cleanfeed | CUSTOM_field_86
+[API-Custom] 038 Medium Type | CUSTOM_field_87
+[API-Custom] 039 Master | CUSTOM_field_88
+[API-Custom] 039a Master Comments | CUSTOM_field_265
+[API-Custom] 039b 10 MBit Proxy | CUSTOM_field_303
+[API-Custom] 040 Sound | CUSTOM_field_89
+[API-Custom] 040a Sound Comments | CUSTOM_field_293
+[API-Custom] 041 Colour | CUSTOM_field_90
+[API-Custom] 041a ColorSpace | CUSTOM_field_238
+[API-Custom] 041b Gamma | CUSTOM_field_239
+[API-Custom] 042 Digitised | CUSTOM_field_91
+[API-Custom] 042a Scanning | CUSTOM_field_241
+[API-Custom] 043 Format Of Digitised Medium | CUSTOM_field_92
+[API-Custom] 044 Format Of Original Medium | CUSTOM_field_93
+[API-Custom] 045 Location Of Original Medium | CUSTOM_field_94
+[API-Custom] 046 Resolution Of Original | CUSTOM_field_95
+[API-Custom] 047 Aspect Ratio Of Original | CUSTOM_field_96
+[API-Custom] 048 Rights Status | CUSTOM_field_97
+[API-Custom] 048b Notes Rights Status | CUSTOM_field_251
+[API-Custom] 049 Rights Owner | CUSTOM_field_98
+[API-Custom] 049a Rights Owner Private | CUSTOM_field_245
+[API-Custom] 050 Restrictions | CUSTOM_field_99
+[API-Custom] 051 Notes Restrictions | CUSTOM_field_100
+[API-Custom] 051a Notes Restrictions public German | CUSTOM_field_253
+[API-Custom] 051b Notes Restrictions public English | CUSTOM_field_254
+[API-Custom] 051c Notes Restrictions public French | CUSTOM_field_255
+[API-Custom] 052 Third Party Rights | CUSTOM_field_101
+[API-Custom] 053 Notes 3rd Party Rights | CUSTOM_field_102
+[API-Custom] 054 Music Exploitable | CUSTOM_field_103
+[API-Custom] 055 Notes Music Rights | CUSTOM_field_104
+[API-Custom] 056 Model Release | CUSTOM_field_105
+[API-Custom] 057 Audience Rating | CUSTOM_field_106
+[API-Custom] 058 Award | CUSTOM_field_107
+[API-Custom] 059 Transcription Original Language | CUSTOM_field_108
+[API-Custom] 060 Transcription Corrected | CUSTOM_field_109
+[API-Custom] 061 Translation | CUSTOM_field_299
+[API-Custom] 062 Translation Corrected | CUSTOM_field_111
+[API-Custom] 063 Transcription AI Engine | CUSTOM_field_112
+[API-Custom] 064 Face Recognition | CUSTOM_field_113
+[API-Custom] 065 Object Recognition | CUSTOM_field_114
+[API-Custom] 066 OCR | CUSTOM_field_115
+[API-Custom] 067 Speaker Separation | CUSTOM_field_116
+[API-Custom] 068 Speaker Identification | CUSTOM_field_117
+[API-Custom] 069 Subtitle By Transcription | CUSTOM_field_118
+[API-Custom] 070 Subtitle Curated | CUSTOM_field_119
+[API-Custom] 071 Closed Captions | CUSTOM_field_120
+[API-Custom] 071a Closed Captions Language | CUSTOM_field_300
+[API-Custom] 072 Audio description | CUSTOM_field_301
+[API-Custom] 072a Audio description Language | CUSTOM_field_302
+[API-Custom] 073a Country Of Production German | CUSTOM_field_175
+[API-Custom] 073b Country Of Production English | CUSTOM_field_176
+[API-Custom] 073c Country Of Production French | CUSTOM_field_177
+[API-Custom] 074a Country Of Action German | CUSTOM_field_178
+[API-Custom] 074b Country Of Action English | CUSTOM_field_179
+[API-Custom] 074c Country Of Action French | CUSTOM_field_180
+[API-Custom] 075a Region Of Action German | CUSTOM_field_181
+[API-Custom] 075b Region Of Action English | CUSTOM_field_182
+[API-Custom] 075c Region Of Action French | CUSTOM_field_183
+[API-Custom] 076a City Of Action German | CUSTOM_field_184
+[API-Custom] 076b City Of Action English | CUSTOM_field_185
+[API-Custom] 076c City Of Action French | CUSTOM_field_186
+[API-Custom] 077 Location Notes | CUSTOM_field_126
+[API-Custom] 078a Nationality German | CUSTOM_field_122
+[API-Custom] 078b Nationality English | CUSTOM_field_123
+[API-Custom] 078c Nationality French | CUSTOM_field_124
+[API-Custom] 079a Ethnicity German | CUSTOM_field_217
+[API-Custom] 079b Ethnicity English | CUSTOM_field_218
+[API-Custom] 079c Ethnicity French  | CUSTOM_field_219
+[API-Custom] 080 Production Year | CUSTOM_field_232
+[API-Custom] 081 Air Date | CUSTOM_field_130
+[API-Custom] 082 Shoot Year | CUSTOM_field_48
+[API-Custom] 082 Shoot Year (TEXT) | CUSTOM_field_49
+[API-Custom] 083 Shoot Date | CUSTOM_field_129
+[API-Custom] 084 Decade | CUSTOM_field_133
+[API-Custom] 085 Production Company | CUSTOM_field_134
+[API-Custom] 085b Production Company English | CUSTOM_field_270
+[API-Custom] 085c Production Company French | CUSTOM_field_271
+[API-Custom] 086 Director | CUSTOM_field_135
+[API-Custom] 086b Director English | CUSTOM_field_272
+[API-Custom] 086c Director French | CUSTOM_field_273
+[API-Custom] 087 Camera | CUSTOM_field_136
+[API-Custom] 087b Camera English | CUSTOM_field_274
+[API-Custom] 087c Camera French | CUSTOM_field_275
+[API-Custom] 088 Photographer | CUSTOM_field_137
+[API-Custom] 088b Photographer English | CUSTOM_field_276
+[API-Custom] 088c Photographer French | CUSTOM_field_277
+[API-Custom] 089 Composer | CUSTOM_field_138
+[API-Custom] 089b Composer English | CUSTOM_field_278
+[API-Custom] 089c Composer French | CUSTOM_field_279
+[API-Custom] 090 Actor | CUSTOM_field_139
+[API-Custom] 090b Actor English | CUSTOM_field_280
+[API-Custom] 090c Actor French | CUSTOM_field_281
+[API-Custom] 091 Producer | CUSTOM_field_140
+[API-Custom] 091b Producer English | CUSTOM_field_282
+[API-Custom] 091c Producer French | CUSTOM_field_283
+[API-Custom] 092 Head Of Production | CUSTOM_field_141
+[API-Custom] 092b Head Of Production English | CUSTOM_field_284
+[API-Custom] 092c Head Of Production French | CUSTOM_field_285
+[API-Custom] 093 Editor | CUSTOM_field_142
+[API-Custom] 093b Editor English | CUSTOM_field_286
+[API-Custom] 093c Editor French | CUSTOM_field_287
+[API-Custom] 094 Commissioner | CUSTOM_field_143
+[API-Custom] 095 Synchro Studio | CUSTOM_field_144
+[API-Custom] 096 Film Studio | CUSTOM_field_145
+[API-Custom] 096b Film Studio English | CUSTOM_field_288
+[API-Custom] 096c Film Studio French | CUSTOM_field_289
+[API-Custom] 097 Additional Crew | CUSTOM_field_146
+[API-Custom] 097b Additional Crew English | CUSTOM_field_290
+[API-Custom] 097c Additional Crew French | CUSTOM_field_291
+[API-Custom] 098 Summary Original | CUSTOM_field_148
+[API-Custom] 098a Summary German | CUSTOM_field_147
+[API-Custom] 098b Summary English | CUSTOM_field_125
+[API-Custom] 098c Summary French | CUSTOM_field_187
+[API-Custom] 098d Summary Additional Language | CUSTOM_field_263
+[API-Custom] 099 Shotlist Original | CUSTOM_field_150
+[API-Custom] 099a Shotlist German | CUSTOM_field_149
+[API-Custom] 099b Shotlist English | CUSTOM_field_188
+[API-Custom] 099c Shotlist French | CUSTOM_field_189
+[API-Custom] 100 Keywords Original | CUSTOM_field_152
+[API-Custom] 100a Keywords German | CUSTOM_field_151
+[API-Custom] 100b Keywords English | CUSTOM_field_190
+[API-Custom] 100c Keywords French | CUSTOM_field_191
+[API-Custom] 101 Genre DEFA | CUSTOM_field_154
+[API-Custom] 101a Genre German | CUSTOM_field_153
+[API-Custom] 101b Genre English | CUSTOM_field_192
+[API-Custom] 101c Genre French | CUSTOM_field_193
+[API-Custom] 102a Personalities German | CUSTOM_field_155
+[API-Custom] 102b Personalities English | CUSTOM_field_194
+[API-Custom] 102c Personalities French | CUSTOM_field_195
+[API-Custom] 103a Personalities Secondary German | CUSTOM_field_156
+[API-Custom] 103b Personalities Secondary English | CUSTOM_field_196
+[API-Custom] 103c Personalities Secondary French | CUSTOM_field_197
+[API-Custom] 104 Internal Notes | CUSTOM_field_157
+[API-Custom] 104a Content Notes German | CUSTOM_field_256
+[API-Custom] 104b Content Notes English | CUSTOM_field_257
+[API-Custom] 104c Content Notes French | CUSTOM_field_258
+[API-Custom] 105 Wide Shot | CUSTOM_field_158
+[API-Custom] 106 Close Up | CUSTOM_field_159
+[API-Custom] 107 Aerial Shot | CUSTOM_field_160
+[API-Custom] 108 Pan Shot | CUSTOM_field_161
+[API-Custom] 109 Travelling Shot | CUSTOM_field_162
+[API-Custom] 110 Indoor | CUSTOM_field_163
+[API-Custom] 111 Night Shot | CUSTOM_field_164
+[API-Custom] 112 For LOOKS Production | CUSTOM_field_165
+[API-Custom] 112a Used in LOOKS Production | CUSTOM_field_294
+[API-Custom] 113 For LOOKS Episode | CUSTOM_field_76
+[API-Custom] 114 For LOOKS Scene Number | CUSTOM_field_234
+[API-Custom] 115 Accounting Article ID | CUSTOM_field_168
+[API-Custom] 116 Accounting Article Range | CUSTOM_field_169
+[API-Custom] 117 Accounting Project Number | CUSTOM_field_170
+[API-Custom] 118 Accounting ID Licence Holder Clip Sales | CUSTOM_field_171
+[API-Custom] 118a Accounting ID Licence Holder DaaS | CUSTOM_field_298
+[API-Custom] 118b Accounting ID Licence Holder FiMu B2E | CUSTOM_field_315
+[API-Custom] 118c Accounting ID Licence Holder FiMu B2C DACH | CUSTOM_field_316
+[API-Custom] 118d Accounting ID Licence Holder FiMu B2C ROW | CUSTOM_field_317
+[API-Custom] 118e Accounting ID Additional Licence Holder | CUSTOM_field_318
+[API-Custom] 119 Accounting Category Price Book | CUSTOM_field_172
+[API-Custom] 120 Accounting Contracts ELO | CUSTOM_field_173
+[API-Custom] 121 Collection DEFA | CUSTOM_field_221
+[API-Custom] 122 ClipID | CUSTOM_field_231
+[API-Custom] 123 AssetID | CUSTOM_field_233
+[API-Custom] 124 CaptureID | CUSTOM_field_235
+[API-Custom] 125 ImageID | CUSTOM_field_247
+[API-Custom] 126 UUID | CUSTOM_field_127
+[API-Custom] 127 Run Transcription | CUSTOM_field_240
+[API-Custom] 128 Mapped | CUSTOM_field_242
+[API-Custom] 128 Mapping Status | CUSTOM_field_252
+[API-Custom] 129 VtAssetID | CUSTOM_field_243
+[API-Custom] 130 Camera Setup | CUSTOM_field_292
+[API-Custom] 131 AI Delivery | CUSTOM_field_295
+[API-Custom] 132 AI Delivery prohibited | CUSTOM_field_297
+[API-Custom] 133 Excluded Territory FiMu B2C | CUSTOM_field_306
+[API-Custom] 134 Excluded Territory FiMu B2E | CUSTOM_field_307
+[API-Custom] 135 Excluded Territory Clip Sales | CUSTOM_field_308
+[API-Custom] 136 Excluded Territory Last Updated | CUSTOM_field_312
+[PARQUET-Basic] aaf_filename
+[PARQUET-Basic] aaf_path
+[API-Basic] ARCHIVE_DATE | Archive Date
+[API-Basic] ARCHIVE_TAPE | Archive Tape
+[API-Basic] ARCHIVE_TYPE | Archive Type
+[PARQUET-Basic] asset.ai_data_version
+[PARQUET-Basic] asset.ai_id
+[PARQUET-Basic] asset.ai_status
+[PARQUET-Basic] asset.ai_term_count
+[PARQUET-Basic] asset.asset_id
+[PARQUET-Basic] asset.asset_type
+[PARQUET-Basic] asset.asset_type_id
+[PARQUET-Basic] asset.asset_type_text
+[PARQUET-Basic] asset.asset_version
+[PARQUET-Basic] asset.comment
+[PARQUET-Basic] asset.last_modified
+[PARQUET-Basic] asset.nle_id
+[PARQUET-Basic] asset.revision
+[PARQUET-Basic] asset.thumbnail
+[PARQUET-Basic] asset.thumbnail_path
+[PARQUET-Basic] asset.uuid
+[PARQUET-Basic] audio.bit_depth
+[PARQUET-Basic] audio.channel
+[PARQUET-Basic] audio.clip_id
+[PARQUET-Basic] audio.compression
+[PARQUET-Basic] audio.essence_id
+[PARQUET-Basic] audio.file.archive_locations.archive
+[PARQUET-Basic] audio.file.archive_locations.backup_location_id
+[PARQUET-Basic] audio.file.archive_locations.file_id
+[PARQUET-Basic] audio.file.archive_locations.media_space_location_id
+[PARQUET-Basic] audio.file.archive_locations.media_space_name
+[PARQUET-Basic] audio.file.archive_locations.media_space_uuid
+[PARQUET-Basic] audio.file.archive_locations.userpath
+[PARQUET-Basic] audio.file.asset
+[PARQUET-Basic] audio.file.backup_locations.backup_location_id
+[PARQUET-Basic] audio.file.backup_locations.backup_type
+[PARQUET-Basic] audio.file.backup_locations.file_id
+[PARQUET-Basic] audio.file.backup_locations.path
+[PARQUET-Basic] audio.file.backup_locations.tag
+[PARQUET-Basic] audio.file.backup_locations.tapes
+[PARQUET-Basic] audio.file.backup_locations.when
+[PARQUET-Basic] audio.file.display_backups
+[PARQUET-Basic] audio.file.display_fileext
+[PARQUET-Basic] audio.file.display_filesize
+[PARQUET-Basic] audio.file.display_filetype
+[PARQUET-Basic] audio.file.display_name
+[PARQUET-Basic] audio.file.file.created
+[PARQUET-Basic] audio.file.file.file_id
+[PARQUET-Basic] audio.file.file.filesize
+[PARQUET-Basic] audio.file.file.hash
+[PARQUET-Basic] audio.file.file.is_placeholder
+[PARQUET-Basic] audio.file.file.modified
+[PARQUET-Basic] audio.file.file.owner
+[PARQUET-Basic] audio.file.file.type
+[PARQUET-Basic] audio.file.gone_locations.archive
+[PARQUET-Basic] audio.file.gone_locations.file_id
+[PARQUET-Basic] audio.file.gone_locations.media_space_location_id
+[PARQUET-Basic] audio.file.gone_locations.media_space_name
+[PARQUET-Basic] audio.file.gone_locations.media_space_uuid
+[PARQUET-Basic] audio.file.gone_locations.userpath
+[PARQUET-Basic] audio.file.locations.archive
+[PARQUET-Basic] audio.file.locations.file_id
+[PARQUET-Basic] audio.file.locations.media_space_location_id
+[PARQUET-Basic] audio.file.locations.media_space_name
+[PARQUET-Basic] audio.file.locations.media_space_uuid
+[PARQUET-Basic] audio.file.locations.userpath
+[PARQUET-Basic] audio.file.status_flags
+[PARQUET-Basic] audio.file.status_text
+[PARQUET-Basic] audio.file_id
+[PARQUET-Basic] audio.sample_count
+[PARQUET-Basic] audio.sample_rate
+[PARQUET-Basic] audio.track
+[API-Basic] AUDIO_SAMPLE_RATE | Audio Sample Rate
+[PARQUET-Basic] capture.capture_id
+[PARQUET-Basic] capture.chunk_group_id
+[PARQUET-Basic] capture.chunk_group_index
+[PARQUET-Basic] capture.chunk_group_uuid
+[PARQUET-Basic] capture.is_chunked
+[PARQUET-Basic] capture.project
+[PARQUET-Basic] capture.recording_id
+[PARQUET-Basic] capture.source
+[PARQUET-Basic] capture.tape
+[API-Basic] CAPTURED
+[API-Basic] CAPTURED_TIME | Captured time
+[PARQUET-Basic] child_clip_ids
+[API-Basic] CLIP_DURATION | Clip duration
+[API-Basic] CLIP_END_TIME | Clip end time
+[PARQUET-Basic] clip_id
+[API-Basic] CLIP_START_TIME | Clip start time
+[API-Basic] CLIPNAME
+[API-Basic] COMMENTS
+[API-Basic] CREATED
+[API-Basic] CREATED_TIME | Created time
+[PARQUET-Custom] custom_metadata.# QCed
+[PARQUET-Custom] custom_metadata.# Review
+[PARQUET-Custom] custom_metadata.# Review Comments
+[PARQUET-Custom] custom_metadata.#Delete
+[PARQUET-Custom] custom_metadata.00 Clip exists as Master
+[PARQUET-Custom] custom_metadata.000 Checked for Upload
+[PARQUET-Custom] custom_metadata.000a Upload Permission
+[PARQUET-Custom] custom_metadata.001 Identifier
+[PARQUET-Custom] custom_metadata.002 Identifier Exists
+[PARQUET-Custom] custom_metadata.003 Identifier Original
+[PARQUET-Custom] custom_metadata.003a DEFA Identifier
+[PARQUET-Custom] custom_metadata.003b Mapping Identifier
+[PARQUET-Custom] custom_metadata.004 Identifier Can / Box / Tape / Old Identifier
+[PARQUET-Custom] custom_metadata.005 User Group
+[PARQUET-Custom] custom_metadata.006 Source PROGRESS
+[PARQUET-Custom] custom_metadata.006a Source Private
+[PARQUET-Custom] custom_metadata.006b Source External Archive
+[PARQUET-Custom] custom_metadata.007 Collection PROGRESS
+[PARQUET-Custom] custom_metadata.008 Collection External Archive
+[PARQUET-Custom] custom_metadata.009 Upload Veritone
+[PARQUET-Custom] custom_metadata.009a Progress Archive URL
+[PARQUET-Custom] custom_metadata.009b Veritone Asset ID
+[PARQUET-Custom] custom_metadata.009c Veritone Name
+[PARQUET-Custom] custom_metadata.009d Veritone Clipname
+[PARQUET-Custom] custom_metadata.009e FiMu URL
+[PARQUET-Custom] custom_metadata.01 LOOKS ID
+[PARQUET-Custom] custom_metadata.010 Upload Date Veritone
+[PARQUET-Custom] custom_metadata.010 Upload Date Veritone (DATE)
+[PARQUET-Custom] custom_metadata.011 Modified Date
+[PARQUET-Custom] custom_metadata.012 Modified Date DEFA
+[PARQUET-Custom] custom_metadata.012 Modified Date DEFA (DATE)
+[PARQUET-Custom] custom_metadata.013 User
+[PARQUET-Custom] custom_metadata.014 Title Original
+[PARQUET-Custom] custom_metadata.015 Title German
+[PARQUET-Custom] custom_metadata.016 Title English
+[PARQUET-Custom] custom_metadata.017 Title French
+[PARQUET-Custom] custom_metadata.018 Title Alternative
+[PARQUET-Custom] custom_metadata.019 Title Series Original
+[PARQUET-Custom] custom_metadata.02 Original Clip ID
+[PARQUET-Custom] custom_metadata.020 Title Episode Original
+[PARQUET-Custom] custom_metadata.021 Title Series German
+[PARQUET-Custom] custom_metadata.022 Title Episode German
+[PARQUET-Custom] custom_metadata.023 Title Series English
+[PARQUET-Custom] custom_metadata.024 Title Episode English
+[PARQUET-Custom] custom_metadata.025 Title Series French
+[PARQUET-Custom] custom_metadata.026 Title Episode French
+[PARQUET-Custom] custom_metadata.027 Episode Number
+[PARQUET-Custom] custom_metadata.028 Edit Version
+[PARQUET-Custom] custom_metadata.028a Editing Status
+[PARQUET-Custom] custom_metadata.029a Language Audio German
+[PARQUET-Custom] custom_metadata.029b Language Audio English
+[PARQUET-Custom] custom_metadata.029c Language Audio French
+[PARQUET-Custom] custom_metadata.03 Source
+[PARQUET-Custom] custom_metadata.030a Language Text German
+[PARQUET-Custom] custom_metadata.030b Language Text English
+[PARQUET-Custom] custom_metadata.030c Language Text French
+[PARQUET-Custom] custom_metadata.031a Main Language German
+[PARQUET-Custom] custom_metadata.031b Main Language English
+[PARQUET-Custom] custom_metadata.031c Main Language French
+[PARQUET-Custom] custom_metadata.032 Subtitle
+[PARQUET-Custom] custom_metadata.033a Subtitle Language German
+[PARQUET-Custom] custom_metadata.033b Subtitle Language English
+[PARQUET-Custom] custom_metadata.033c Subtitle Language French
+[PARQUET-Custom] custom_metadata.034 Narration
+[PARQUET-Custom] custom_metadata.035 IT Version
+[PARQUET-Custom] custom_metadata.036 Synchronisation
+[PARQUET-Custom] custom_metadata.037 Cleanfeed
+[PARQUET-Custom] custom_metadata.038 Medium Type
+[PARQUET-Custom] custom_metadata.039 Master
+[PARQUET-Custom] custom_metadata.039a Master Comments
+[PARQUET-Custom] custom_metadata.039b 10 MBit Proxy
+[PARQUET-Custom] custom_metadata.04 Title
+[PARQUET-Custom] custom_metadata.040 Sound
+[PARQUET-Custom] custom_metadata.040a Sound Comments
+[PARQUET-Custom] custom_metadata.041 Colour
+[PARQUET-Custom] custom_metadata.041a ColorSpace
+[PARQUET-Custom] custom_metadata.041b Gamma
+[PARQUET-Custom] custom_metadata.042 Digitised
+[PARQUET-Custom] custom_metadata.042a Scanning
+[PARQUET-Custom] custom_metadata.043 Format Of Digitised Medium
+[PARQUET-Custom] custom_metadata.044 Format Of Original Medium
+[PARQUET-Custom] custom_metadata.045 Location Of Original Medium
+[PARQUET-Custom] custom_metadata.046 Resolution Of Original
+[PARQUET-Custom] custom_metadata.047 Aspect Ratio Of Original
+[PARQUET-Custom] custom_metadata.048 Rights Status
+[PARQUET-Custom] custom_metadata.048b Notes Rights Status
+[PARQUET-Custom] custom_metadata.049 Rights Owner
+[PARQUET-Custom] custom_metadata.049a Rights Owner Private
+[PARQUET-Custom] custom_metadata.05 Master
+[PARQUET-Custom] custom_metadata.050 Restrictions
+[PARQUET-Custom] custom_metadata.051 Notes Restrictions
+[PARQUET-Custom] custom_metadata.051a Notes Restrictions public German
+[PARQUET-Custom] custom_metadata.051b Notes Restrictions public English
+[PARQUET-Custom] custom_metadata.051c Notes Restrictions public French
+[PARQUET-Custom] custom_metadata.052 Third Party Rights
+[PARQUET-Custom] custom_metadata.053 Notes 3rd Party Rights
+[PARQUET-Custom] custom_metadata.054 Music Exploitable
+[PARQUET-Custom] custom_metadata.055 Notes Music Rights
+[PARQUET-Custom] custom_metadata.056 Model Release
+[PARQUET-Custom] custom_metadata.057 Audience Rating
+[PARQUET-Custom] custom_metadata.058 Award
+[PARQUET-Custom] custom_metadata.059 Transcription Original Language
+[PARQUET-Custom] custom_metadata.06 Screener
+[PARQUET-Custom] custom_metadata.060 Transcription Corrected
+[PARQUET-Custom] custom_metadata.061 Transcription French Delete
+[PARQUET-Custom] custom_metadata.062 Translation Corrected
+[PARQUET-Custom] custom_metadata.063 Transcription AI Engine
+[PARQUET-Custom] custom_metadata.064 Face Recognition
+[PARQUET-Custom] custom_metadata.065 Object Recognition
+[PARQUET-Custom] custom_metadata.066 OCR
+[PARQUET-Custom] custom_metadata.067 Speaker Separation
+[PARQUET-Custom] custom_metadata.068 Speaker Identification
+[PARQUET-Custom] custom_metadata.069 Subtitle By Transcription
+[PARQUET-Custom] custom_metadata.07 Former LOOKS ID
+[PARQUET-Custom] custom_metadata.070 Subtitle Curated
+[PARQUET-Custom] custom_metadata.071 Closed Captions
+[PARQUET-Custom] custom_metadata.072 Audio description
+[PARQUET-Custom] custom_metadata.072 Coordinates DELETE
+[PARQUET-Custom] custom_metadata.073a Country Of Production German
+[PARQUET-Custom] custom_metadata.073b Country Of Production English
+[PARQUET-Custom] custom_metadata.073c Country Of Production French
+[PARQUET-Custom] custom_metadata.074a Country Of Action German
+[PARQUET-Custom] custom_metadata.074b Country Of Action English
+[PARQUET-Custom] custom_metadata.074c Country Of Action French
+[PARQUET-Custom] custom_metadata.075a Region Of Action German
+[PARQUET-Custom] custom_metadata.075b Region Of Action English
+[PARQUET-Custom] custom_metadata.075c Region Of Action French
+[PARQUET-Custom] custom_metadata.076a City Of Action German
+[PARQUET-Custom] custom_metadata.076b City Of Action English
+[PARQUET-Custom] custom_metadata.076c City Of Action French
+[PARQUET-Custom] custom_metadata.077 Location Notes
+[PARQUET-Custom] custom_metadata.078a Nationality German
+[PARQUET-Custom] custom_metadata.078b Nationality English
+[PARQUET-Custom] custom_metadata.078c Nationality French
+[PARQUET-Custom] custom_metadata.079 Ethnicity
+[PARQUET-Custom] custom_metadata.079a Ethnicity German
+[PARQUET-Custom] custom_metadata.079b Ethnicity English
+[PARQUET-Custom] custom_metadata.079c Ethnicity French 
+[PARQUET-Custom] custom_metadata.08 Bin/Can
+[PARQUET-Custom] custom_metadata.080 Production Year
+[PARQUET-Custom] custom_metadata.081 Air Date
+[PARQUET-Custom] custom_metadata.082 Shoot Year
+[PARQUET-Custom] custom_metadata.082 Shoot Year (TEXT)
+[PARQUET-Custom] custom_metadata.083 Shoot Date
+[PARQUET-Custom] custom_metadata.084 Decade
+[PARQUET-Custom] custom_metadata.085 Production Company
+[PARQUET-Custom] custom_metadata.085b Production Company English
+[PARQUET-Custom] custom_metadata.085c Production Company French
+[PARQUET-Custom] custom_metadata.086 Director
+[PARQUET-Custom] custom_metadata.086b Director English
+[PARQUET-Custom] custom_metadata.086c Director French
+[PARQUET-Custom] custom_metadata.087 Camera
+[PARQUET-Custom] custom_metadata.087b Camera English
+[PARQUET-Custom] custom_metadata.087c Camera French
+[PARQUET-Custom] custom_metadata.088 Photographer
+[PARQUET-Custom] custom_metadata.088b Photographer English
+[PARQUET-Custom] custom_metadata.088c Photographer French
+[PARQUET-Custom] custom_metadata.089 Composer
+[PARQUET-Custom] custom_metadata.089b Composer English
+[PARQUET-Custom] custom_metadata.089c Composer French
+[PARQUET-Custom] custom_metadata.09 Collection
+[PARQUET-Custom] custom_metadata.090 Actor
+[PARQUET-Custom] custom_metadata.090b Actor English
+[PARQUET-Custom] custom_metadata.090c Actor French
+[PARQUET-Custom] custom_metadata.091 Producer
+[PARQUET-Custom] custom_metadata.091b Producer English
+[PARQUET-Custom] custom_metadata.091c Producer French
+[PARQUET-Custom] custom_metadata.092 Head Of Production
+[PARQUET-Custom] custom_metadata.092b Head Of Production English
+[PARQUET-Custom] custom_metadata.092c Head Of Production French
+[PARQUET-Custom] custom_metadata.093 Editor
+[PARQUET-Custom] custom_metadata.093b Editor English
+[PARQUET-Custom] custom_metadata.093c Editor French
+[PARQUET-Custom] custom_metadata.094 Commissioner
+[PARQUET-Custom] custom_metadata.095 Synchro Studio
+[PARQUET-Custom] custom_metadata.096 Film Studio
+[PARQUET-Custom] custom_metadata.096b Film Studio English
+[PARQUET-Custom] custom_metadata.096c Film Studio French
+[PARQUET-Custom] custom_metadata.097 Additional Crew
+[PARQUET-Custom] custom_metadata.097b Additional Crew English
+[PARQUET-Custom] custom_metadata.097c Additional Crew French
+[PARQUET-Custom] custom_metadata.098 Summary Original
+[PARQUET-Custom] custom_metadata.098a Summary German
+[PARQUET-Custom] custom_metadata.098b Summary English
+[PARQUET-Custom] custom_metadata.098c Summary French
+[PARQUET-Custom] custom_metadata.098d Summary Additional Language
+[PARQUET-Custom] custom_metadata.099 Shotlist Original
+[PARQUET-Custom] custom_metadata.099a Shotlist German
+[PARQUET-Custom] custom_metadata.099b Shotlist English
+[PARQUET-Custom] custom_metadata.099c Shotlist French
+[PARQUET-Custom] custom_metadata.10 Licence required
+[PARQUET-Custom] custom_metadata.100 Keywords Original
+[PARQUET-Custom] custom_metadata.100a Keywords German
+[PARQUET-Custom] custom_metadata.100b Keywords English
+[PARQUET-Custom] custom_metadata.100c Keywords French
+[PARQUET-Custom] custom_metadata.101 Genre DEFA
+[PARQUET-Custom] custom_metadata.101a Genre German
+[PARQUET-Custom] custom_metadata.101b Genre English
+[PARQUET-Custom] custom_metadata.101c Genre French
+[PARQUET-Custom] custom_metadata.102a Personalities German
+[PARQUET-Custom] custom_metadata.102b Personalities English
+[PARQUET-Custom] custom_metadata.102c Personalities French
+[PARQUET-Custom] custom_metadata.103a Personalities Secondary German
+[PARQUET-Custom] custom_metadata.103b Personalities Secondary English
+[PARQUET-Custom] custom_metadata.103c Personalities Secondary French
+[PARQUET-Custom] custom_metadata.104 Internal Notes
+[PARQUET-Custom] custom_metadata.104a Content Notes German
+[PARQUET-Custom] custom_metadata.104b Content Notes English
+[PARQUET-Custom] custom_metadata.104c Content Notes French
+[PARQUET-Custom] custom_metadata.105 Wide Shot
+[PARQUET-Custom] custom_metadata.106 Close Up
+[PARQUET-Custom] custom_metadata.107 Aerial Shot
+[PARQUET-Custom] custom_metadata.108 Pan Shot
+[PARQUET-Custom] custom_metadata.109 Travelling Shot
+[PARQUET-Custom] custom_metadata.11 Licence not required
+[PARQUET-Custom] custom_metadata.110 Indoor
+[PARQUET-Custom] custom_metadata.111 Night Shot
+[PARQUET-Custom] custom_metadata.112 For LOOKS Production
+[PARQUET-Custom] custom_metadata.112a Used in LOOKS Production
+[PARQUET-Custom] custom_metadata.113 For LOOKS Episode
+[PARQUET-Custom] custom_metadata.114 For LOOKS Scene Number
+[PARQUET-Custom] custom_metadata.115 Accounting Article ID
+[PARQUET-Custom] custom_metadata.116 Accounting Article Range
+[PARQUET-Custom] custom_metadata.117 Accounting Project Number
+[PARQUET-Custom] custom_metadata.118 Accounting ID Licence Holder Clip Sales
+[PARQUET-Custom] custom_metadata.118a Accounting ID Licence Holder DaaS
+[PARQUET-Custom] custom_metadata.118b Accounting ID Licence Holder FiMu B2E
+[PARQUET-Custom] custom_metadata.118c Accounting ID Licence Holder FiMu B2C DACH
+[PARQUET-Custom] custom_metadata.118d Accounting ID Licence Holder FiMu B2C ROW
+[PARQUET-Custom] custom_metadata.118e Accounting ID Additional Licence Holder
+[PARQUET-Custom] custom_metadata.119 Accounting Category Price Book
+[PARQUET-Custom] custom_metadata.12 Notes on Rights Status
+[PARQUET-Custom] custom_metadata.120 Accounting Contracts ELO
+[PARQUET-Custom] custom_metadata.121 Collection DEFA
+[PARQUET-Custom] custom_metadata.122 ClipID
+[PARQUET-Custom] custom_metadata.123 AssetID
+[PARQUET-Custom] custom_metadata.124 CaptureID
+[PARQUET-Custom] custom_metadata.125 ImageID
+[PARQUET-Custom] custom_metadata.126 UUID
+[PARQUET-Custom] custom_metadata.127 Run Transcription
+[PARQUET-Custom] custom_metadata.128 Mapped
+[PARQUET-Custom] custom_metadata.128 Mapping Status
+[PARQUET-Custom] custom_metadata.129 VtAssetID
+[PARQUET-Custom] custom_metadata.13 3rd Party Rights within Clip
+[PARQUET-Custom] custom_metadata.130 Camera Setup
+[PARQUET-Custom] custom_metadata.131 AI Delivery
+[PARQUET-Custom] custom_metadata.132 AI Delivery prohibited
+[PARQUET-Custom] custom_metadata.133 Excluded Territory FiMu B2C
+[PARQUET-Custom] custom_metadata.134 Excluded Territory FiMu B2E
+[PARQUET-Custom] custom_metadata.135 Excluded Territory Clip Sales
+[PARQUET-Custom] custom_metadata.136 Excluded Territory Last Updated
+[PARQUET-Custom] custom_metadata.14 Notes on 3rd Party Rights
+[PARQUET-Custom] custom_metadata.15 Author
+[PARQUET-Custom] custom_metadata.16 Resolution
+[PARQUET-Custom] custom_metadata.17 Location of Original
+[PARQUET-Custom] custom_metadata.18 Color
+[PARQUET-Custom] custom_metadata.19 Sound
+[PARQUET-Custom] custom_metadata.20 Shoot Date/Year
+[PARQUET-Custom] custom_metadata.21 Period/Decade
+[PARQUET-Custom] custom_metadata.22 Production Date/Air Date
+[PARQUET-Custom] custom_metadata.23 State/Country
+[PARQUET-Custom] custom_metadata.24 Region/City
+[PARQUET-Custom] custom_metadata.25 Nationality
+[PARQUET-Custom] custom_metadata.26 People of Importance
+[PARQUET-Custom] custom_metadata.27 Keywords LOOKS
+[PARQUET-Custom] custom_metadata.28 Original Summary / Shot List
+[PARQUET-Custom] custom_metadata.29 Shot List LOOKS
+[PARQUET-Custom] custom_metadata.30 Tracking Shot
+[PARQUET-Custom] custom_metadata.31 Close-up
+[PARQUET-Custom] custom_metadata.32 Wide Shot
+[PARQUET-Custom] custom_metadata.33 Genre
+[PARQUET-Custom] custom_metadata.34 Looks Project
+[PARQUET-Custom] custom_metadata.35 Episode
+[PARQUET-Custom] custom_metadata.36 Script Scene
+[PARQUET-Custom] custom_metadata.QC Group
+[PARQUET-Custom] custom_metadata.table
+[PARQUET-Custom] custom_metadata.Testfeld Manuel
+[PARQUET-Custom] custom_metadata.testLicenseStartDateB2C
+[PARQUET-Custom] custom_metadata.xxx Proxy UUID
+[PARQUET-Basic] data.caption_type
+[PARQUET-Basic] data.channel
+[PARQUET-Basic] data.clip_id
+[PARQUET-Basic] data.encoding_id
+[PARQUET-Basic] data.essence_id
+[PARQUET-Basic] data.file.archive_locations.archive
+[PARQUET-Basic] data.file.archive_locations.backup_location_id
+[PARQUET-Basic] data.file.archive_locations.file_id
+[PARQUET-Basic] data.file.archive_locations.media_space_location_id
+[PARQUET-Basic] data.file.archive_locations.media_space_name
+[PARQUET-Basic] data.file.archive_locations.media_space_uuid
+[PARQUET-Basic] data.file.archive_locations.userpath
+[PARQUET-Basic] data.file.asset
+[PARQUET-Basic] data.file.backup_locations.backup_location_id
+[PARQUET-Basic] data.file.backup_locations.backup_type
+[PARQUET-Basic] data.file.backup_locations.file_id
+[PARQUET-Basic] data.file.backup_locations.path
+[PARQUET-Basic] data.file.backup_locations.tag
+[PARQUET-Basic] data.file.backup_locations.tapes
+[PARQUET-Basic] data.file.backup_locations.when
+[PARQUET-Basic] data.file.display_backups
+[PARQUET-Basic] data.file.display_fileext
+[PARQUET-Basic] data.file.display_filesize
+[PARQUET-Basic] data.file.display_filetype
+[PARQUET-Basic] data.file.display_name
+[PARQUET-Basic] data.file.file.created
+[PARQUET-Basic] data.file.file.file_id
+[PARQUET-Basic] data.file.file.filesize
+[PARQUET-Basic] data.file.file.hash
+[PARQUET-Basic] data.file.file.is_placeholder
+[PARQUET-Basic] data.file.file.modified
+[PARQUET-Basic] data.file.file.type
+[PARQUET-Basic] data.file.gone_locations.archive
+[PARQUET-Basic] data.file.gone_locations.file_id
+[PARQUET-Basic] data.file.gone_locations.media_space_location_id
+[PARQUET-Basic] data.file.gone_locations.media_space_name
+[PARQUET-Basic] data.file.gone_locations.media_space_uuid
+[PARQUET-Basic] data.file.gone_locations.userpath
+[PARQUET-Basic] data.file.locations.archive
+[PARQUET-Basic] data.file.locations.file_id
+[PARQUET-Basic] data.file.locations.media_space_location_id
+[PARQUET-Basic] data.file.locations.media_space_name
+[PARQUET-Basic] data.file.locations.media_space_uuid
+[PARQUET-Basic] data.file.locations.userpath
+[PARQUET-Basic] data.file.status_flags
+[PARQUET-Basic] data.file.status_text
+[PARQUET-Basic] data.file_id
+[PARQUET-Basic] data.track
+[API-Basic] DIR | Path
+[PARQUET-Basic] display_aspect_ratio
+[PARQUET-Basic] display_audio
+[PARQUET-Basic] display_backups
+[PARQUET-Basic] display_fileext
+[PARQUET-Basic] display_filesize
+[PARQUET-Basic] display_filetype
+[PARQUET-Basic] display_frame_rate
+[PARQUET-Basic] display_name
+[PARQUET-Basic] display_standard
+[PARQUET-Basic] display_video_codec
+[PARQUET-Basic] display_video_size
+[PARQUET-Basic] duration hour
+[API-Basic] FILE_EXT | File Extension
+[API-Basic] FILE_SIZE | File Size
+[API-Basic] FILE_TYPE | File Type
+[API-Basic] FILENAME
+[API-Basic] FRAME_HEIGHT | Frame Height
+[API-Basic] FRAME_RATE | Frame Rate
+[API-Basic] FRAME_WIDTH | Frame Width
+[API-Basic] HAS_A_PROXY | Has a proxy
+[API-Basic] HAS_A_THUMBNAIL | Has a thumbnail
+[API-Basic] HAS_A_TRANSCRIPT | Has a transcript
+[API-Basic] HAS_ASSET_ASSOCIATIONS | Has asset associations
+[PARQUET-Basic] has_audio
+[PARQUET-Basic] has_comments
+[PARQUET-Basic] has_data
+[PARQUET-Basic] has_index_file
+[API-Basic] HAS_REVIEW | Has review
+[PARQUET-Basic] has_review
+[PARQUET-Basic] has_transcript
+[PARQUET-Basic] has_video
+[API-Basic] IN_A_SEQUENCE | Is in a sequence
+[API-Basic] IS_PLACEHOLDER | Is a placeholder
+[PARQUET-Basic] is_recording
+[API-Basic] LAST_MODIFIED | Metadata last modified
+[API-Basic] LOG_APPROVED | Marker approved
+[API-Basic] LOG_COLOR | Marker colour
+[API-Basic] LOG_COMMENT | Marker description
+[API-Basic] LOG_IN_TIME | Marker in time
+[API-Basic] LOG_NAME | Marker name
+[API-Basic] LOG_OUT_TIME | Marker out time
+[API-Basic] LOG_RATING | Marker rating
+[API-Basic] LOG_SOURCE | Marker source
+[API-Basic] MARKER_CREATED_BY | Marker created by
+[API-Basic] MARKER_HAS_REVIEW | Marker has review
+[API-Basic] MARKER_REVIEW_ASSIGNED_TO | Marker review assigned to
+[API-Basic] MARKER_REVIEW_COMMENTS | Marker review comments
+[API-Basic] MARKER_REVIEW_CREATED_BY | Marker review created by
+[API-Basic] MARKER_REVIEW_CREATED_DATE | Marker review created date
+[API-Basic] MARKER_REVIEW_LAST_COMMENT_DATE | Marker review last comment date
+[API-Basic] MARKER_REVIEW_STATUS | Marker review status
+[API-Basic] MEDIA_SPACES_NAMES | Media Space
+[API-Basic] MEDIA_TYPE | Media type
+[PARQUET-Basic] metadata.captured
+[PARQUET-Basic] metadata.clip_name
+[PARQUET-Basic] metadata.clip_name_with_extension
+[PARQUET-Basic] metadata.metadata_id
+[PARQUET-Basic] metadata.metadata_uuid
+[PARQUET-Basic] metadata.modified
+[PARQUET-Basic] metadata.scene
+[PARQUET-Basic] metadata.take
+[PARQUET-Basic] metadata.timecode_end
+[PARQUET-Basic] metadata.timecode_in
+[PARQUET-Basic] metadata.timecode_out
+[PARQUET-Basic] metadata.timecode_start
+[PARQUET-Basic] mob_ids.audio_tracks
+[PARQUET-Basic] mob_ids.data_tracks
+[PARQUET-Basic] mob_ids.master
+[PARQUET-Basic] mob_ids.tape
+[PARQUET-Basic] mob_ids.video_tracks
+[API-Basic] MODIFIED
+[API-Basic] MODIFIED_TIME | Modified time
+[PARQUET-Basic] parent_clip_id
+[API-Basic] PROJECT
+[API-Basic] PROJECT_NAME | FLOW Project
+[PARQUET-Basic] proxy_filename
+[PARQUET-Basic] proxy_has_index_file
+[PARQUET-Basic] proxy_id
+[PARQUET-Basic] proxy_path
+[API-Basic] REVIEW_ASSIGNED_TO | Review assigned to
+[API-Basic] REVIEW_COMMENTS | Review comment
+[API-Basic] REVIEW_CREATED_BY | Review created by
+[API-Basic] REVIEW_CREATED_DATE | Review created date
+[API-Basic] REVIEW_LAST_COMMENT_DATE | Review last comment date
+[API-Basic] REVIEW_STATUS | Review status
+[API-Basic] SCAN_TYPE | Scan Type
+[API-Basic] SCENE
+[API-Basic] SEQUENCE_ENTRY_COMMENTS | Sequence comments
+[API-Basic] SEQUENCE_ENTRY_NAME | Sequence entry name
+[API-Basic] SEQUENCE_MARKER_APPROVED | Sequence Marker approved
+[API-Basic] SEQUENCE_MARKER_COLOR | Sequence Marker colour
+[API-Basic] SEQUENCE_MARKER_CREATED_BY | Sequence Marker created by
+[API-Basic] SEQUENCE_MARKER_DESCRIPTION | Sequence Marker description
+[API-Basic] SEQUENCE_MARKER_HAS_REVIEW | Sequence Marker has review
+[API-Basic] SEQUENCE_MARKER_IN_TIME | Sequence Marker in time
+[API-Basic] SEQUENCE_MARKER_NAME | Sequence Marker name
+[API-Basic] SEQUENCE_MARKER_OUT_TIME | Sequence Marker out time
+[API-Basic] SEQUENCE_MARKER_RATING | Sequence Marker rating
+[API-Basic] SEQUENCE_MARKER_REVIEW_ASSIGNED_TO | Sequence Marker review assigned to
+[API-Basic] SEQUENCE_MARKER_REVIEW_COMMENTS | Sequence Marker review comments
+[API-Basic] SEQUENCE_MARKER_REVIEW_CREATED_BY | Sequence Marker review created by
+[API-Basic] SEQUENCE_MARKER_REVIEW_CREATED_DATE | Sequence Marker review created date
+[API-Basic] SEQUENCE_MARKER_REVIEW_LAST_COMMENT_DATE | Sequence Marker review last comment date
+[API-Basic] SEQUENCE_MARKER_REVIEW_STATUS | Sequence Marker review status
+[API-Basic] SEQUENCE_MARKER_SOURCE | Sequence Marker source
+[API-Basic] SEQUENCE_NAME | Sequence name
+[API-Basic] STATUS
+[PARQUET-Basic] status_flags
+[PARQUET-Basic] status_text
+[API-Basic] TAKE
+[API-Basic] TAPE
+[PARQUET-Basic] video.aspect_ratio
+[PARQUET-Basic] video.channel
+[PARQUET-Basic] video.clip_id
+[PARQUET-Basic] video.data_rate
+[PARQUET-Basic] video.dominance
+[PARQUET-Basic] video.encoding_id
+[PARQUET-Basic] video.essence_id
+[PARQUET-Basic] video.file.archive_locations.archive
+[PARQUET-Basic] video.file.archive_locations.backup_location_id
+[PARQUET-Basic] video.file.archive_locations.file_id
+[PARQUET-Basic] video.file.archive_locations.media_space_location_id
+[PARQUET-Basic] video.file.archive_locations.media_space_name
+[PARQUET-Basic] video.file.archive_locations.media_space_uuid
+[PARQUET-Basic] video.file.archive_locations.userpath
+[PARQUET-Basic] video.file.asset
+[PARQUET-Basic] video.file.backup_locations.backup_location_id
+[PARQUET-Basic] video.file.backup_locations.backup_type
+[PARQUET-Basic] video.file.backup_locations.file_id
+[PARQUET-Basic] video.file.backup_locations.path
+[PARQUET-Basic] video.file.backup_locations.tag
+[PARQUET-Basic] video.file.backup_locations.tapes
+[PARQUET-Basic] video.file.backup_locations.when
+[PARQUET-Basic] video.file.display_backups
+[PARQUET-Basic] video.file.display_fileext
+[PARQUET-Basic] video.file.display_filesize
+[PARQUET-Basic] video.file.display_filetype
+[PARQUET-Basic] video.file.display_name
+[PARQUET-Basic] video.file.file.created
+[PARQUET-Basic] video.file.file.file_id
+[PARQUET-Basic] video.file.file.filesize
+[PARQUET-Basic] video.file.file.hash
+[PARQUET-Basic] video.file.file.is_placeholder
+[PARQUET-Basic] video.file.file.modified
+[PARQUET-Basic] video.file.file.owner
+[PARQUET-Basic] video.file.file.type
+[PARQUET-Basic] video.file.gone_locations.archive
+[PARQUET-Basic] video.file.gone_locations.file_id
+[PARQUET-Basic] video.file.gone_locations.media_space_location_id
+[PARQUET-Basic] video.file.gone_locations.media_space_name
+[PARQUET-Basic] video.file.gone_locations.media_space_uuid
+[PARQUET-Basic] video.file.gone_locations.userpath
+[PARQUET-Basic] video.file.locations.archive
+[PARQUET-Basic] video.file.locations.file_id
+[PARQUET-Basic] video.file.locations.media_space_location_id
+[PARQUET-Basic] video.file.locations.media_space_name
+[PARQUET-Basic] video.file.locations.media_space_uuid
+[PARQUET-Basic] video.file.locations.userpath
+[PARQUET-Basic] video.file.status_flags
+[PARQUET-Basic] video.file.status_text
+[PARQUET-Basic] video.file_id
+[PARQUET-Basic] video.fourcc
+[PARQUET-Basic] video.frame_rate
+[PARQUET-Basic] video.gop_length
+[PARQUET-Basic] video.height
+[PARQUET-Basic] video.is_image_sequence
+[PARQUET-Basic] video.timecode_duration
+[PARQUET-Basic] video.timecode_end
+[PARQUET-Basic] video.timecode_start
+[PARQUET-Basic] video.track
+[PARQUET-Basic] video.video_codec
+[PARQUET-Basic] video.width
+[API-Basic] VIDEO_CODEC | Video Codec
+[API-Basic] VIDEO_CODEC_TYPE | Video Codec Type
+[PARQUET-Basic] virtual_child_clip_ids
+[PARQUET-Basic] virtual_parent_clip_id
