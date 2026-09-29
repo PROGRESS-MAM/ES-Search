@@ -17,7 +17,7 @@ import pyarrow.parquet as pq
 
 # --------- CONFIG ---------
 app_name = "Searcher"
-app_version = "1.5.3"
+app_version = "1.5.4"
 
 share_path = Path("SMB File Exchange") / "Metadata_File"
 file_name = "all_clips_all_metadata.parquet"
@@ -577,8 +577,27 @@ def _search_node(request_fields):
         filters = [{"field": field, "match": match, "search": entry} for entry in values]
         return {"combine": "MATCH_ANY" if len(filters) > 1 else "MATCH_ALL", "filters": filters}
 
+    def combine_nodes(left, right, match):
+        def compatible_filters(node):
+            filters = node.get("filters")
+            return filters if filters is not None and (node["combine"] == match or len(filters) == 1) else None
+
+        left_filters = compatible_filters(left)
+        right_filters = compatible_filters(right)
+        if left_filters is not None and right_filters is not None:
+            return {"combine": match, "filters": [*left_filters, *right_filters]}
+        if left["combine"] == match and "children" in left:
+            children = left["children"][:]
+            tail_filters = compatible_filters(children[-1])
+            if tail_filters is not None and right_filters is not None:
+                children[-1] = {"combine": match, "filters": [*tail_filters, *right_filters]}
+            else:
+                children.append(right)
+            return {"combine": match, "children": children}
+        return {"combine": match, "children": [left, right]}
+
     parts = [condition(part) if isinstance(part, tuple) else part for part in request_fields]
-    combine = {key: lambda left, right, op=value: {"combine": op, "children": [left, right]}
+    combine = {key: lambda left, right, match=value: combine_nodes(left, right, match)
                for key, value in (("and", "MATCH_ALL"), ("or", "MATCH_ANY"))}
     return fold_logic(parts, combine)
 

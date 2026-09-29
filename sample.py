@@ -26,17 +26,18 @@ metadata_source = "api"    # "file" (Parquet auf dem Share) oder "api"
 # --------- SEARCHES ---------
 searches = [
     {
-        "name": "LYNXarchive",
+        "name": "DEFA Dokumentation",
         "request_fields": (
             ("006 Source PROGRESS", "is", "DEFA"),
             "and",
             ("007 Collection PROGRESS", "is", "East German Film Archives (DEFA)"),
             "and",
-            ("101a Genre German", "is", "Dokumentarfilm"),
+            ("101a Genre German", "is", "Dokumentarfilm")
         ),
         "return_fields": ("clip_id", "001 Identifier","014 Title Original","clip_name_with_extension", "hash"),
     }
 ]
+
 
 
 # --------- MAIN ---------
